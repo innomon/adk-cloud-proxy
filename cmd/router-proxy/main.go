@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -15,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/innomon/adk-cloud-proxy/pkg/auth"
+	"github.com/innomon/adk-cloud-proxy/pkg/logging"
 	"github.com/innomon/adk-cloud-proxy/pkg/router"
 	pb "github.com/innomon/adk-cloud-proxy/pkg/tunnel"
 	"golang.org/x/net/http2"
@@ -48,15 +49,16 @@ func (s *server) Connect(stream pb.TunnelService_ConnectServer) error {
 
 	claims, err := s.validator.Validate(tokenStr)
 	if err != nil {
+		slog.Warn("connector authentication failed", "error", err)
 		return status.Errorf(codes.Unauthenticated, "authentication failed: %v", err)
 	}
 
-	log.Printf("Connector registered: userid=%s appid=%s", claims.UserID, claims.AppID)
+	slog.Info("connector registered", "userid", claims.UserID, "appid", claims.AppID)
 	cs := s.registry.Register(claims.UserID, claims.AppID, stream)
 	defer func() {
 		s.registry.Unregister(claims.UserID, claims.AppID)
 		cs.CleanupPending()
-		log.Printf("Connector disconnected: userid=%s appid=%s", claims.UserID, claims.AppID)
+		slog.Info("connector disconnected", "userid", claims.UserID, "appid", claims.AppID)
 	}()
 
 	// Read responses from the connector and resolve pending requests.
@@ -84,13 +86,20 @@ func (s *server) handleADKRequest(w http.ResponseWriter, r *http.Request) {
 
 	claims, err := s.validator.Validate(tokenStr)
 	if err != nil {
+		slog.Warn("client authentication failed", "error", err, "method", r.Method, "path", r.URL.Path)
 		http.Error(w, fmt.Sprintf("authentication failed: %v", err), http.StatusUnauthorized)
 		return
 	}
 
+	requestID := uuid.New().String()
+	logger := slog.With("request_id", requestID, "userid", claims.UserID, "appid", claims.AppID)
+
+	logger.Info("request received", "method", r.Method, "path", r.URL.Path)
+
 	// Look up the connector stream.
 	cs, err := s.registry.Lookup(claims.UserID, claims.AppID)
 	if err != nil {
+		logger.Warn("no connector available", "error", err)
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
@@ -98,6 +107,7 @@ func (s *server) handleADKRequest(w http.ResponseWriter, r *http.Request) {
 	// Read the request body.
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
+		logger.Error("failed to read request body", "error", err)
 		http.Error(w, "failed to read request body", http.StatusBadRequest)
 		return
 	}
@@ -110,7 +120,6 @@ func (s *server) handleADKRequest(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	requestID := uuid.New().String()
 	tunnelMsg := &pb.TunnelMessage{
 		RequestId: requestID,
 		Payload: &pb.TunnelMessage_HttpRequest{
@@ -128,6 +137,7 @@ func (s *server) handleADKRequest(w http.ResponseWriter, r *http.Request) {
 
 	// Send the request through the tunnel.
 	if err := cs.Stream.Send(tunnelMsg); err != nil {
+		logger.Error("failed to send request to connector", "error", err)
 		http.Error(w, "failed to send request to connector", http.StatusBadGateway)
 		return
 	}
@@ -139,11 +149,13 @@ func (s *server) handleADKRequest(w http.ResponseWriter, r *http.Request) {
 	select {
 	case resp, ok := <-respCh:
 		if !ok {
+			logger.Warn("connector disconnected during request")
 			http.Error(w, "connector disconnected", http.StatusBadGateway)
 			return
 		}
 		httpResp := resp.GetHttpResponse()
 		if httpResp == nil {
+			logger.Error("invalid response from connector")
 			http.Error(w, "invalid response from connector", http.StatusBadGateway)
 			return
 		}
@@ -152,15 +164,20 @@ func (s *server) handleADKRequest(w http.ResponseWriter, r *http.Request) {
 		}
 		w.WriteHeader(int(httpResp.StatusCode))
 		w.Write(httpResp.Body)
+		logger.Info("response sent", "status", httpResp.StatusCode)
 	case <-ctx.Done():
+		logger.Warn("request timed out")
 		http.Error(w, "request timed out", http.StatusGatewayTimeout)
 	}
 }
 
 func main() {
+	logging.Setup()
+
 	issuerPubKey := os.Getenv("ISSUER_PUBLIC_KEY")
 	if issuerPubKey == "" {
-		log.Fatal("ISSUER_PUBLIC_KEY environment variable is required")
+		slog.Error("ISSUER_PUBLIC_KEY environment variable is required")
+		os.Exit(1)
 	}
 
 	port := os.Getenv("PORT")
@@ -172,7 +189,8 @@ func main() {
 
 	validator, err := auth.NewValidator(issuerPubKey)
 	if err != nil {
-		log.Fatalf("Failed to create validator: %v", err)
+		slog.Error("failed to create validator", "error", err)
+		os.Exit(1)
 	}
 
 	srv := &server{
@@ -206,14 +224,15 @@ func main() {
 		}
 
 		go func() {
-			log.Printf("Combined HTTP+gRPC server listening on :%s", port)
+			slog.Info("combined HTTP+gRPC server started", "port", port)
 			if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				log.Fatalf("Server failed: %v", err)
+				slog.Error("server failed", "error", err)
+				os.Exit(1)
 			}
 		}()
 
 		<-sigCh
-		log.Println("Shutting down...")
+		slog.Info("shutting down")
 		grpcServer.GracefulStop()
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -222,13 +241,15 @@ func main() {
 		// Dual port mode: separate HTTP and gRPC ports (for local development).
 		grpcLis, err := net.Listen("tcp", ":"+grpcPort)
 		if err != nil {
-			log.Fatalf("Failed to listen on gRPC port %s: %v", grpcPort, err)
+			slog.Error("failed to listen on gRPC port", "port", grpcPort, "error", err)
+			os.Exit(1)
 		}
 
 		go func() {
-			log.Printf("gRPC server listening on :%s", grpcPort)
+			slog.Info("gRPC server started", "port", grpcPort)
 			if err := grpcServer.Serve(grpcLis); err != nil {
-				log.Fatalf("gRPC server failed: %v", err)
+				slog.Error("gRPC server failed", "error", err)
+				os.Exit(1)
 			}
 		}()
 
@@ -238,14 +259,15 @@ func main() {
 		}
 
 		go func() {
-			log.Printf("HTTP server listening on :%s", port)
+			slog.Info("HTTP server started", "port", port)
 			if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				log.Fatalf("HTTP server failed: %v", err)
+				slog.Error("HTTP server failed", "error", err)
+				os.Exit(1)
 			}
 		}()
 
 		<-sigCh
-		log.Println("Shutting down...")
+		slog.Info("shutting down")
 		grpcServer.GracefulStop()
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()

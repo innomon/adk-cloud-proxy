@@ -32,6 +32,7 @@ This plan outlines the steps to build and deploy the ADK Server Router Proxy and
 - [x] Implement the Connector Registration gRPC service.
 - [x] Implement an in-memory `Registry` to track active Connector streams.
 - [x] Implement the HTTP/gRPC interceptor to route incoming ADK requests to the appropriate stream.
+- [x] Add structured logging (`log/slog`) with Google Cloud Logging support (`pkg/logging`).
 - [ ] Add support for multiple Cloud Run instances (optional, use Redis for session/stream tracking if needed).
 
 ## Phase 3: Connector Agent (cmd/connector)

@@ -28,6 +28,7 @@ cmd/
 pkg/
   auth/                   JWT validation using NATS NKeys (Ed25519)
   goose/                  Goose API client, ADK↔Goose translator, session manager
+  logging/                Structured logging (slog) with Google Cloud Logging support
   router/                 In-memory registry mapping (userid, appid) → active streams
   tunnel/                 Protobuf-defined gRPC bi-directional streaming service
 ```
@@ -97,6 +98,17 @@ All authentication uses **NATS NKeys** (Ed25519). JWTs are signed with NKey seed
 | `userid` | User identifier for routing |
 | `appid` | Application identifier for routing |
 | `sessionid` | *(Optional)* Session affinity |
+
+## Logging
+
+The Router Proxy uses Go's `log/slog` for structured logging, configured via `pkg/logging`.
+
+| Environment | Output | Format | Destination |
+|---|---|---|---|
+| **Cloud Run** | `stdout` | JSON (Google Cloud Logging compatible) | GCP Logs Explorer |
+| **Local** | `stderr` | Human-readable text | Terminal |
+
+Cloud Run is detected automatically via the `K_SERVICE` environment variable (set by Cloud Run). No configuration is needed — logs appear in the [GCP Logs Explorer](https://console.cloud.google.com/logs) with proper severity levels and structured fields (`request_id`, `userid`, `appid`, `method`, `path`, `status`).
 
 ## Running Tests
 

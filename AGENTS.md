@@ -9,6 +9,7 @@ This is an ADK (Agent Development Kit) Server Router Proxy system written in Go,
 - **Router Proxy** (`cmd/router-proxy/`): Cloud Run service that authenticates clients/connectors and routes ADK requests to the correct connector stream.
 - **Connector** (`cmd/connector/`): Runs in private networks, maintains a gRPC tunnel to the Router Proxy, and forwards requests to a local ADK server.
 - **Auth** (`pkg/auth/`): JWT validation using NATS NKeys (Ed25519). Verifies `sub`, `iss`, `userid`, `appid`, `sessionid` claims.
+- **Logging** (`pkg/logging/`): Structured logging setup using `log/slog`. Auto-detects Cloud Run via `K_SERVICE` for JSON output compatible with Google Cloud Logging.
 - **Router** (`pkg/router/`): In-memory registry mapping `(userid, appid)` to active gRPC streams.
 - **Tunnel** (`pkg/tunnel/`): Protobuf-defined gRPC bi-directional streaming service for connector communication.
 

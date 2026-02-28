@@ -35,6 +35,7 @@ The Router Proxy is the entry point for all client requests.
     - Maintain a registry of active Connector connections.
     - Extract routing metadata (`userid`, `appid`, `session`) from JWT claims.
     - Forward ADK requests to the appropriate Connector.
+- **Logging:** Structured logging via `log/slog`. On Cloud Run, outputs JSON to stdout with fields mapped for Google Cloud Logging (`severity`, `message`, `timestamp`). Locally, outputs human-readable text to stderr.
 - **Tech Stack:** Go, ADK Go SDK, `github.com/nats-io/jwt/v2`, `github.com/nats-io/nkeys`.
 
 ### 2.2 ADK Connector (Reverse Proxy Agent)
