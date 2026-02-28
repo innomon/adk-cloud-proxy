@@ -66,12 +66,19 @@ Any application using the ADK protocol that needs to reach a remote agent.
 
 ## 3. Authentication & Security
 
-### 3.1 NKeys & JWT
-Authentication uses Ed25519 signatures via NKeys.
+The Router Proxy supports **two JWT authentication mechanisms**:
+
+1. **NATS NKey JWTs** — used by Connectors and programmatic Chatbot clients (existing).
+2. **EdDSA OAuth JWTs** — used by the SPA (`a2ui-chat-ts`), issued by the WhatsApp Gateway (`whatsadk`) acting as an Identity Provider (new).
+
+### 3.1 NATS NKey JWTs (Connectors & Chatbots)
+
+Authentication uses Ed25519 signatures via NKeys (`nats-io/jwt/v2`, `nats-io/nkeys`).
 - **Issuer:** A trusted authority (Operator/Account) that signs the JWTs.
 - **Verification:** The Router Proxy validates the signature using the Issuer's Public Key.
+- **Libraries:** `github.com/nats-io/jwt/v2`, `github.com/nats-io/nkeys`.
 
-### 3.2 JWT Claims
+#### 3.1.1 NATS JWT Claims
 The JWT MUST include the following claims for routing:
 - `sub` (Subject): The identity of the requester.
 - `iss` (Issuer): The public key of the signer.
@@ -79,8 +86,58 @@ The JWT MUST include the following claims for routing:
 - `appid`: Custom claim identifying the application.
 - `sessionid`: (Optional) For session-affinity routing.
 
-### 3.3 Connector Authentication
-Connectors also authenticate with JWTs. The Router Proxy uses the `userid` and `appid` claims in the Connector's JWT to register it in the routing table.
+#### 3.1.2 Connector Authentication
+Connectors also authenticate with NATS JWTs. The Router Proxy uses the `userid` and `appid` claims in the Connector's JWT to register it in the routing table.
+
+### 3.2 EdDSA OAuth JWTs (SPA / WhatsApp OAuth)
+
+The SPA authenticates users via the WhatsApp Gateway's OAuth flow. The gateway issues standard JWTs signed with Ed25519 (`alg: EdDSA`) using `golang-jwt/jwt/v5`.
+
+- **Issuer:** The WhatsApp Gateway (`whatsadk-gateway`).
+- **Audience:** This service (`adk-cloud-proxy`).
+- **Verification:** The Router Proxy validates the EdDSA signature using the gateway's Ed25519 public key, provided via the `OAUTH_PUBLIC_KEY` environment variable (base64url-encoded 32-byte raw public key).
+- **Libraries:** `golang-jwt/jwt/v5`, `crypto/ed25519` (Go stdlib).
+
+#### 3.2.1 EdDSA OAuth JWT Claims
+
+```json
+{
+  "alg": "EdDSA",
+  "typ": "JWT"
+}
+.
+{
+  "sub": "919876543210",
+  "iss": "whatsadk-gateway",
+  "aud": "adk-cloud-proxy",
+  "iat": 1700000000,
+  "exp": 1700086400,
+  "nonce": "a1b2c3d4e5f6g7h8",
+  "pubkey": "base64url-encoded-ed25519-public-key"
+}
+```
+
+- `sub`: The authenticated phone number — used as the **userid** for routing.
+- `iss`: Must match the expected gateway issuer identifier.
+- `aud`: Must match this service's identifier.
+- `exp`: Default 24-hour expiry (set by the gateway, configurable).
+- `nonce`: Binds the token to the originating SPA instance (not verified by this service).
+- `pubkey`: The SPA's ephemeral Ed25519 public key (not verified by this service).
+
+#### 3.2.2 Claim Mapping for Routing
+
+When the Router Proxy receives an EdDSA OAuth JWT (detected by `alg: EdDSA` and standard JWT structure vs NATS JWT structure):
+- `userid` is derived from the `sub` claim (the phone number).
+- `appid` must be provided by the SPA in a request header or query parameter (e.g., `X-App-ID` header), since the OAuth JWT does not contain an `appid` claim.
+- `sessionid` is provided by the SPA in the ADK request body (as per standard ADK protocol).
+
+### 3.3 Token Discrimination
+
+The Router Proxy distinguishes between the two JWT types:
+1. **NATS JWTs** use a dot-separated format with NKey-specific header fields. They are decoded via `jwt.DecodeGeneric()` from `nats-io/jwt/v2`.
+2. **EdDSA OAuth JWTs** are standard RFC 7519 JWTs with `"alg": "EdDSA"` in the header. They are decoded via `golang-jwt/jwt/v5` with an `ed25519.PublicKey` verifier.
+
+The auth middleware attempts NATS JWT validation first; if that fails (e.g., signature mismatch or format error), it falls back to EdDSA OAuth JWT validation (only if `OAUTH_PUBLIC_KEY` is configured).
 
 ## 4. Routing Logic
 
@@ -107,7 +164,10 @@ The Router Proxy maintains an in-memory map:
 - The Router Proxy is deployed as a Cloud Run service.
 - **Configuration:**
     - HTTP/2 must be enabled for gRPC streams.
-    - Authentication Public Keys should be provided via environment variables or Secret Manager.
+    - NATS Authentication Public Keys should be provided via environment variables or Secret Manager.
+    - `OAUTH_PUBLIC_KEY`: *(Optional)* Base64url-encoded Ed25519 public key of the WhatsApp Gateway. Enables SPA OAuth authentication when set.
+    - `OAUTH_ISSUER`: *(Optional)* Expected `iss` claim value (default: `whatsadk-gateway`).
+    - `OAUTH_AUDIENCE`: *(Optional)* Expected `aud` claim value (default: `adk-cloud-proxy`).
 
 ### 6.2 Connector Configuration
 - The Connector requires:
