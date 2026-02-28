@@ -1,4 +1,5 @@
 # Compiled binaries
+/adk2goose-connector
 /connector
 /mock-chatbot
 /router-proxy
