@@ -51,7 +51,7 @@ go run ./cmd/target-server
 ### 3. Start the Router Proxy
 
 ```bash
-ISSUER_PUBLIC_KEY=<operator-public-key> go run ./cmd/router-proxy
+ISSUER_PUBLIC_KEY=<operator-public-key> GRPC_PORT=9090 go run ./cmd/router-proxy
 ```
 
 ### 4. Start the Connector
@@ -89,9 +89,92 @@ All authentication uses **NATS NKeys** (Ed25519). JWTs are signed with NKey seed
 go test ./...
 ```
 
-## Deployment
+## Cloud Run Deployment
 
-Cloud Run deployment support is planned. See [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) for current status.
+### Prerequisites
+
+- [Google Cloud SDK](https://cloud.google.com/sdk/docs/install) (`gcloud`)
+- A GCP project with Cloud Run and Artifact Registry enabled
+- A NATS NKey pair for JWT signing/verification
+
+### 1. Set Up Environment
+
+```bash
+export PROJECT_ID=<your-gcp-project>
+export REGION=us-central1
+export REPO=adk-cloud-proxy
+export ISSUER_PUBLIC_KEY=<operator-public-key>
+
+gcloud config set project $PROJECT_ID
+```
+
+### 2. Create Artifact Registry Repository
+
+```bash
+gcloud artifacts repositories create $REPO \
+  --repository-format=docker \
+  --location=$REGION
+```
+
+### 3. Build & Deploy the Router Proxy
+
+```bash
+# Build the image
+gcloud builds submit \
+  --tag ${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/router-proxy \
+  --dockerfile Dockerfile.router-proxy
+
+# Deploy to Cloud Run with HTTP/2 enabled
+gcloud run deploy router-proxy \
+  --image ${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/router-proxy \
+  --region $REGION \
+  --use-http2 \
+  --allow-unauthenticated \
+  --set-env-vars "ISSUER_PUBLIC_KEY=${ISSUER_PUBLIC_KEY}" \
+  --port 8080
+```
+
+> **Note:** The router proxy uses combined HTTP+gRPC mode on a single port when `GRPC_PORT` is not set, which is required for Cloud Run.
+
+### 4. Build & Run the Connector
+
+The Connector runs in your private network alongside the target ADK server.
+
+```bash
+# Build the image
+docker build -f Dockerfile.connector -t connector .
+
+# Run the connector
+docker run \
+  -e ROUTER_PROXY_URL=<cloud-run-service-url>:443 \
+  -e TLS_ENABLED=true \
+  -e NKEY_SEED=<connector-nkey-seed> \
+  -e TARGET_ADK_SERVER_URL=http://host.docker.internal:8080 \
+  -e USER_ID=<user-id> \
+  -e APP_ID=<app-id> \
+  connector
+```
+
+### Environment Variables
+
+#### Router Proxy
+
+| Variable | Required | Description |
+|---|---|---|
+| `ISSUER_PUBLIC_KEY` | Yes | NKey public key for JWT verification |
+| `PORT` | No | HTTP port (default: `8080`, auto-set by Cloud Run) |
+| `GRPC_PORT` | No | If set, gRPC runs on a separate port (local dev). If unset, combined mode is used. |
+
+#### Connector
+
+| Variable | Required | Description |
+|---|---|---|
+| `ROUTER_PROXY_URL` | Yes | Address of the Router Proxy (e.g., `my-service.a.run.app:443`) |
+| `NKEY_SEED` | Yes | NKey seed for signing the connector JWT |
+| `TARGET_ADK_SERVER_URL` | Yes | URL of the local ADK server |
+| `USER_ID` | Yes | User identifier for routing |
+| `APP_ID` | Yes | Application identifier for routing |
+| `TLS_ENABLED` | No | Set to `true` for Cloud Run connections (default: `false`) |
 
 ## License
 

@@ -50,10 +50,10 @@ This plan outlines the steps to build and deploy the ADK Server Router Proxy and
 - [x] Validate authentication failures and routing edge cases.
 
 ## Phase 5: Cloud Run Deployment
-- [ ] Create a multi-stage `Dockerfile` for the Router Proxy.
-- [ ] Create a `Dockerfile` (or build binary) for the Connector.
-- [ ] Set up Google Cloud Run with:
+- [x] Create a multi-stage `Dockerfile` for the Router Proxy.
+- [x] Create a `Dockerfile` (or build binary) for the Connector.
+- [x] Set up Google Cloud Run with:
     - HTTP/2 enabled.
     - Proper IAM roles.
     - Environment variables for NKey Public Keys.
-- [ ] Write a `README.md` with setup and deployment instructions.
+- [x] Write a `README.md` with setup and deployment instructions.

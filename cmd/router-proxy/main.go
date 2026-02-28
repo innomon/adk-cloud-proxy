@@ -17,6 +17,8 @@ import (
 	"github.com/innomon/adk-cloud-proxy/pkg/auth"
 	"github.com/innomon/adk-cloud-proxy/pkg/router"
 	pb "github.com/innomon/adk-cloud-proxy/pkg/tunnel"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -167,9 +169,6 @@ func main() {
 	}
 
 	grpcPort := os.Getenv("GRPC_PORT")
-	if grpcPort == "" {
-		grpcPort = "9090"
-	}
 
 	validator, err := auth.NewValidator(issuerPubKey)
 	if err != nil {
@@ -181,46 +180,75 @@ func main() {
 		validator: validator,
 	}
 
-	// Start gRPC server for connector tunnels.
 	grpcServer := grpc.NewServer()
 	pb.RegisterTunnelServiceServer(grpcServer, srv)
 
-	grpcLis, err := net.Listen("tcp", ":"+grpcPort)
-	if err != nil {
-		log.Fatalf("Failed to listen on gRPC port %s: %v", grpcPort, err)
-	}
-
-	go func() {
-		log.Printf("gRPC server listening on :%s", grpcPort)
-		if err := grpcServer.Serve(grpcLis); err != nil {
-			log.Fatalf("gRPC server failed: %v", err)
-		}
-	}()
-
-	// Start HTTP server for ADK client requests.
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", srv.handleADKRequest)
-
-	httpServer := &http.Server{
-		Addr:    ":" + port,
-		Handler: mux,
-	}
-
-	go func() {
-		log.Printf("HTTP server listening on :%s", port)
-		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("HTTP server failed: %v", err)
-		}
-	}()
 
 	// Graceful shutdown.
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	<-sigCh
 
-	log.Println("Shutting down...")
-	grpcServer.GracefulStop()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	httpServer.Shutdown(ctx)
+	if grpcPort == "" || grpcPort == port {
+		// Combined mode: serve HTTP and gRPC on a single port (required for Cloud Run).
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.ProtoMajor == 2 && strings.HasPrefix(r.Header.Get("Content-Type"), "application/grpc") {
+				grpcServer.ServeHTTP(w, r)
+			} else {
+				mux.ServeHTTP(w, r)
+			}
+		})
+
+		httpServer := &http.Server{
+			Addr:    ":" + port,
+			Handler: h2c.NewHandler(handler, &http2.Server{}),
+		}
+
+		go func() {
+			log.Printf("Combined HTTP+gRPC server listening on :%s", port)
+			if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("Server failed: %v", err)
+			}
+		}()
+
+		<-sigCh
+		log.Println("Shutting down...")
+		grpcServer.GracefulStop()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		httpServer.Shutdown(ctx)
+	} else {
+		// Dual port mode: separate HTTP and gRPC ports (for local development).
+		grpcLis, err := net.Listen("tcp", ":"+grpcPort)
+		if err != nil {
+			log.Fatalf("Failed to listen on gRPC port %s: %v", grpcPort, err)
+		}
+
+		go func() {
+			log.Printf("gRPC server listening on :%s", grpcPort)
+			if err := grpcServer.Serve(grpcLis); err != nil {
+				log.Fatalf("gRPC server failed: %v", err)
+			}
+		}()
+
+		httpServer := &http.Server{
+			Addr:    ":" + port,
+			Handler: mux,
+		}
+
+		go func() {
+			log.Printf("HTTP server listening on :%s", port)
+			if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("HTTP server failed: %v", err)
+			}
+		}()
+
+		<-sigCh
+		log.Println("Shutting down...")
+		grpcServer.GracefulStop()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		httpServer.Shutdown(ctx)
+	}
 }

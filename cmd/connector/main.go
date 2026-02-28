@@ -3,17 +3,20 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/innomon/adk-cloud-proxy/pkg/auth"
 	pb "github.com/innomon/adk-cloud-proxy/pkg/tunnel"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 )
@@ -44,6 +47,8 @@ func main() {
 		log.Fatal("APP_ID environment variable is required")
 	}
 
+	useTLS := strings.EqualFold(os.Getenv("TLS_ENABLED"), "true")
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -58,7 +63,7 @@ func main() {
 
 	// Reconnect loop.
 	for {
-		if err := runTunnel(ctx, routerProxyURL, []byte(nkeySeed), targetURL, userID, appID); err != nil {
+		if err := runTunnel(ctx, routerProxyURL, []byte(nkeySeed), targetURL, userID, appID, useTLS); err != nil {
 			if ctx.Err() != nil {
 				log.Println("Connector stopped")
 				return
@@ -71,7 +76,7 @@ func main() {
 	}
 }
 
-func runTunnel(ctx context.Context, proxyURL string, seed []byte, targetURL, userID, appID string) error {
+func runTunnel(ctx context.Context, proxyURL string, seed []byte, targetURL, userID, appID string, useTLS bool) error {
 	// Generate JWT.
 	token, err := auth.GenerateToken(seed, userID, appID, "", 1*time.Hour)
 	if err != nil {
@@ -79,7 +84,13 @@ func runTunnel(ctx context.Context, proxyURL string, seed []byte, targetURL, use
 	}
 
 	// Connect to the Router Proxy.
-	conn, err := grpc.NewClient(proxyURL, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	var transportCreds grpc.DialOption
+	if useTLS {
+		transportCreds = grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{}))
+	} else {
+		transportCreds = grpc.WithTransportCredentials(insecure.NewCredentials())
+	}
+	conn, err := grpc.NewClient(proxyURL, transportCreds)
 	if err != nil {
 		return err
 	}
