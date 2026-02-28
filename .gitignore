@@ -1,0 +1,14 @@
+# Compiled binaries
+/connector
+/mock-chatbot
+/router-proxy
+/target-server
+
+# Go build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
