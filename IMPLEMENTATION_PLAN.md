@@ -42,6 +42,17 @@ This plan outlines the steps to build and deploy the ADK Server Router Proxy and
     - Forward the request to a local ADK server (using the ADK Go SDK client).
     - Send the response back through the tunnel.
 
+## Phase 3.5: ADK2Goose Connector (cmd/adk2goose-connector)
+- [x] Create `pkg/goose/` package with Goose API client, types, translator, session manager, and ADK HTTP handler.
+- [x] Implement ADK↔Goose request/response translation (adapted from `adk2goose` project).
+- [x] Implement `cmd/adk2goose-connector/main.go`:
+    - Connects to Router Proxy via gRPC tunnel (same auth/reconnect logic as ADK connector).
+    - Embeds an ADK2Goose proxy handler using `httptest.ResponseRecorder`.
+    - Translates ADK requests to Goose API calls and Goose SSE responses back to ADK events.
+- [x] Create `Dockerfile.adk2goose-connector` for containerized deployment.
+- [ ] Add unit tests for `pkg/goose/` translator and session manager.
+- [ ] End-to-end test: Chatbot → Router Proxy → ADK2Goose Connector → Goose Server.
+
 ## Phase 4: Integration & Testing
 - [x] Create a "Hello World" ADK server (target server).
 - [x] Create a "Mock Chatbot" client that signs JWTs with NKeys.

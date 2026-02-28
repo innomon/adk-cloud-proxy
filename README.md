@@ -20,14 +20,16 @@ Chatbot ──► Router Proxy (Cloud Run) ◄── Connector ──► Target 
 
 ```
 cmd/
-  router-proxy/    Cloud Run entry point
-  connector/       Reverse-proxy agent for private networks
-  mock-chatbot/    Test client that signs JWTs with NKeys
-  target-server/   Sample "Hello World" ADK server
+  router-proxy/           Cloud Run entry point
+  connector/              Reverse-proxy agent for private networks (ADK target)
+  adk2goose-connector/    Reverse-proxy agent that bridges ADK to Goose servers
+  mock-chatbot/           Test client that signs JWTs with NKeys
+  target-server/          Sample "Hello World" ADK server
 pkg/
-  auth/            JWT validation using NATS NKeys (Ed25519)
-  router/          In-memory registry mapping (userid, appid) → active streams
-  tunnel/          Protobuf-defined gRPC bi-directional streaming service
+  auth/                   JWT validation using NATS NKeys (Ed25519)
+  goose/                  Goose API client, ADK↔Goose translator, session manager
+  router/                 In-memory registry mapping (userid, appid) → active streams
+  tunnel/                 Protobuf-defined gRPC bi-directional streaming service
 ```
 
 ## Prerequisites
@@ -63,7 +65,20 @@ TARGET_ADK_SERVER_URL=http://localhost:8080 \
 go run ./cmd/connector
 ```
 
-### 5. Send a Request via the Mock Chatbot
+### 5. (Option A) Start the ADK2Goose Connector
+
+Instead of the standard Connector, you can use the ADK2Goose Connector to bridge ADK requests to a [Goose](https://github.com/block/goose) server:
+
+```bash
+ROUTER_PROXY_URL=localhost:50051 \
+NKEY_SEED=<connector-nkey-seed> \
+USER_ID=<user-id> \
+APP_ID=<app-id> \
+GOOSE_BASE_URL=http://localhost:3000 \
+go run ./cmd/adk2goose-connector
+```
+
+### 6. Send a Request via the Mock Chatbot
 
 ```bash
 ROUTER_PROXY_URL=http://localhost:8080 \
@@ -174,6 +189,19 @@ docker run \
 | `TARGET_ADK_SERVER_URL` | Yes | URL of the local ADK server |
 | `USER_ID` | Yes | User identifier for routing |
 | `APP_ID` | Yes | Application identifier for routing |
+| `TLS_ENABLED` | No | Set to `true` for Cloud Run connections (default: `false`) |
+
+#### ADK2Goose Connector
+
+| Variable | Required | Description |
+|---|---|---|
+| `ROUTER_PROXY_URL` | Yes | Address of the Router Proxy (e.g., `my-service.a.run.app:443`) |
+| `NKEY_SEED` | Yes | NKey seed for signing the connector JWT |
+| `USER_ID` | Yes | User identifier for routing |
+| `APP_ID` | Yes | Application identifier for routing |
+| `GOOSE_BASE_URL` | No | URL of the Goose server (default: `http://127.0.0.1:3000`) |
+| `GOOSE_SECRET_KEY` | No | Secret key for Goose API authentication |
+| `WORKING_DIR` | No | Working directory for Goose agent sessions (default: `.`) |
 | `TLS_ENABLED` | No | Set to `true` for Cloud Run connections (default: `false`) |
 
 ## License

@@ -46,7 +46,17 @@ The Connector runs in the same private network as the target ADK server.
     - Act as an ADK client to forward requests to the local ADK server.
     - Return responses back through the stream.
 
-### 2.3 Chatbot / Client
+### 2.3 ADK2Goose Connector
+A variant of the ADK Connector that bridges ADK clients to a [Goose](https://github.com/block/goose) agent server instead of a standard ADK server.
+- **Responsibilities:**
+    - Establish an outbound gRPC tunnel to the Router Proxy (same as the ADK Connector).
+    - Authenticate using its own NKey-signed JWT.
+    - Embed an ADK-to-Goose translation layer that converts ADK REST API requests into Goose API calls.
+    - Manage Goose agent sessions (start, stop, session mapping).
+    - Translate Goose SSE streaming responses back into ADK event format.
+    - Return translated responses back through the tunnel.
+
+### 2.4 Chatbot / Client
 Any application using the ADK protocol that needs to reach a remote agent.
 - **Responsibilities:**
     - Generate a JWT signed with an NKey.
@@ -103,3 +113,13 @@ The Router Proxy maintains an in-memory map:
     - `ROUTER_PROXY_URL`: Endpoint of the Cloud Run service.
     - `NKEY_SEED`: Its private seed for signing its own JWT.
     - `TARGET_ADK_SERVER_URL`: Local URL of the agent it proxies for.
+
+### 6.3 ADK2Goose Connector Configuration
+- The ADK2Goose Connector requires:
+    - `ROUTER_PROXY_URL`: Endpoint of the Cloud Run service.
+    - `NKEY_SEED`: Its private seed for signing its own JWT.
+    - `USER_ID`: User identifier for routing.
+    - `APP_ID`: Application identifier for routing.
+    - `GOOSE_BASE_URL`: URL of the Goose server (default: `http://127.0.0.1:3000`).
+    - `GOOSE_SECRET_KEY`: *(Optional)* Secret key for Goose API authentication.
+    - `WORKING_DIR`: *(Optional)* Working directory for Goose agent sessions (default: `.`).
