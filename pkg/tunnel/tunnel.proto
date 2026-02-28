@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package tunnel;
+
+option go_package = "github.com/innomon/adk-cloud-proxy/pkg/tunnel";
+
+// TunnelService defines the bi-directional streaming RPC between the
+// Router Proxy and Connectors.
+service TunnelService {
+  // Connect establishes a persistent bi-directional stream.
+  // The Connector calls this RPC and keeps the stream open.
+  // The Router Proxy sends ADK requests through the stream and
+  // receives responses back.
+  rpc Connect(stream TunnelMessage) returns (stream TunnelMessage);
+}
+
+// TunnelMessage wraps either a request or response flowing through the tunnel.
+message TunnelMessage {
+  // Unique identifier to correlate requests with responses.
+  string request_id = 1;
+
+  oneof payload {
+    // An ADK HTTP request forwarded from the Router Proxy to the Connector.
+    HttpRequest http_request = 2;
+    // An ADK HTTP response returned from the Connector to the Router Proxy.
+    HttpResponse http_response = 3;
+  }
+}
+
+message HttpRequest {
+  string method = 1;
+  string path = 2;
+  map<string, string> headers = 3;
+  bytes body = 4;
+}
+
+message HttpResponse {
+  int32 status_code = 1;
+  map<string, string> headers = 2;
+  bytes body = 3;
+}
