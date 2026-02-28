@@ -18,4 +18,11 @@ COPY --from=builder /app/router-proxy /usr/local/bin/router-proxy
 
 EXPOSE 8080
 
+# Required:
+#   ISSUER_PUBLIC_KEY  - NKey public key for NATS JWT verification
+# Optional (WhatsApp OAuth):
+#   OAUTH_PUBLIC_KEY   - Base64url-encoded Ed25519 public key of the WhatsApp Gateway
+#   OAUTH_ISSUER       - Expected iss claim (default: whatsadk-gateway)
+#   OAUTH_AUDIENCE     - Expected aud claim (default: adk-cloud-proxy)
+
 ENTRYPOINT ["router-proxy"]

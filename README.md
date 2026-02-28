@@ -89,7 +89,11 @@ go run ./cmd/mock-chatbot
 
 ## Authentication
 
-All authentication uses **NATS NKeys** (Ed25519). JWTs are signed with NKey seeds and verified against the issuer's public key. Required JWT claims:
+The Router Proxy supports **dual authentication**:
+
+### 1. NATS NKey JWTs (Connectors & Chatbot Clients)
+
+JWTs are signed with NKey seeds (Ed25519) and verified against the issuer's public key. Required JWT claims:
 
 | Claim | Description |
 |-------|-------------|
@@ -98,6 +102,23 @@ All authentication uses **NATS NKeys** (Ed25519). JWTs are signed with NKey seed
 | `userid` | User identifier for routing |
 | `appid` | Application identifier for routing |
 | `sessionid` | *(Optional)* Session affinity |
+
+### 2. WhatsApp OAuth EdDSA JWTs (SPA Clients)
+
+SPA clients authenticated via the WhatsApp Gateway's OAuth flow use standard EdDSA JWTs (`golang-jwt/jwt/v5`). This is **optional** — enabled only when `OAUTH_PUBLIC_KEY` is set.
+
+- The gateway signs JWTs with Ed25519 (`alg: EdDSA`).
+- `sub` (phone number) maps to `userid` for routing.
+- `appid` must be provided via the `X-App-ID` HTTP header.
+- The Router Proxy tries NATS validation first, then falls back to OAuth validation.
+
+To enable, set the following environment variables on the Router Proxy:
+
+```bash
+OAUTH_PUBLIC_KEY=<base64url-encoded-32-byte-ed25519-public-key>
+OAUTH_ISSUER=whatsadk-gateway       # optional, this is the default
+OAUTH_AUDIENCE=adk-cloud-proxy      # optional, this is the default
+```
 
 ## Logging
 
@@ -191,6 +212,9 @@ docker run \
 | `ISSUER_PUBLIC_KEY` | Yes | NKey public key for JWT verification |
 | `PORT` | No | HTTP port (default: `8080`, auto-set by Cloud Run) |
 | `GRPC_PORT` | No | If set, gRPC runs on a separate port (local dev). If unset, combined mode is used. |
+| `OAUTH_PUBLIC_KEY` | No | Base64url-encoded Ed25519 public key of the WhatsApp Gateway. Enables OAuth auth. |
+| `OAUTH_ISSUER` | No | Expected `iss` claim for OAuth JWTs (default: `whatsadk-gateway`) |
+| `OAUTH_AUDIENCE` | No | Expected `aud` claim for OAuth JWTs (default: `adk-cloud-proxy`) |
 
 #### Connector
 

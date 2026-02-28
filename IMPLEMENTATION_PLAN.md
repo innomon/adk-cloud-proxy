@@ -75,19 +75,19 @@ This plan outlines the steps to build and deploy the ADK Server Router Proxy and
 > Enable SPA users authenticated via the WhatsApp Gateway's OAuth flow to access the Router Proxy. The gateway issues standard EdDSA JWTs (`golang-jwt/jwt/v5`). This is **in addition** to the existing NATS NKey JWT auth used by connectors and chatbot clients.
 
 ### 6.1 Dependencies
-- [ ] Add `github.com/golang-jwt/jwt/v5` to `go.mod` (the gateway already uses it; this service needs it for verification).
+- [x] Add `github.com/golang-jwt/jwt/v5` to `go.mod` (the gateway already uses it; this service needs it for verification).
 - Note: `crypto/ed25519` is in the Go standard library — no additional dependency.
 
 ### 6.2 OAuth Validator (`pkg/auth/oauth.go`)
-- [ ] Define `OAuthClaims` struct:
+- [x] Define `OAuthClaims` struct:
   - `Sub` (phone number), `Iss`, `Aud`, `Nonce`, `PubKey` string fields.
   - Embed `jwt.RegisteredClaims` from `golang-jwt/jwt/v5`.
-- [ ] Implement `OAuthValidator` struct:
+- [x] Implement `OAuthValidator` struct:
   - `publicKey ed25519.PublicKey` — loaded from `OAUTH_PUBLIC_KEY` env var (base64url-encoded raw 32-byte key).
   - `issuer string` — expected `iss` claim (default: `whatsadk-gateway`).
   - `audience string` — expected `aud` claim (default: `adk-cloud-proxy`).
-- [ ] `NewOAuthValidator(pubKeyBase64, issuer, audience string) (*OAuthValidator, error)` — decodes the public key, validates it is 32 bytes.
-- [ ] `Validate(tokenStr string) (*Claims, error)`:
+- [x] `NewOAuthValidator(pubKeyBase64, issuer, audience string) (*OAuthValidator, error)` — decodes the public key, validates it is 32 bytes.
+- [x] `Validate(tokenStr string) (*Claims, error)`:
   - Parse with `jwt.Parse()` using `jwt.WithValidMethods([]string{"EdDSA"})`.
   - Verify signature with the Ed25519 public key.
   - Check `iss` matches expected issuer.
@@ -97,28 +97,28 @@ This plan outlines the steps to build and deploy the ADK Server Router Proxy and
   - Set `Claims.AppID` from request context (provided via `X-App-ID` header).
   - Return the unified `Claims` struct (same as NATS validator).
 
-### 6.3 Dual Auth Middleware (`pkg/auth/auth.go`)
-- [ ] Refactor `Validate()` or add a `DualValidator` that:
+### 6.3 Dual Auth Middleware (`pkg/auth/dual_validator.go`)
+- [x] Refactor `Validate()` or add a `DualValidator` that:
   1. Attempts NATS JWT validation first (existing `Validator.Validate()`).
   2. If NATS validation fails **and** an `OAuthValidator` is configured, attempts EdDSA OAuth validation.
   3. Returns the first successful `*Claims` or an aggregate error.
-- [ ] The `DualValidator` is optional — if `OAUTH_PUBLIC_KEY` is not set, only NATS auth is active.
-- [ ] Extract `X-App-ID` header from the HTTP request for OAuth JWT routing (NATS JWTs already embed `appid`).
+- [x] The `DualValidator` is optional — if `OAUTH_PUBLIC_KEY` is not set, only NATS auth is active.
+- [x] Extract `X-App-ID` header from the HTTP request for OAuth JWT routing (NATS JWTs already embed `appid`).
 
 ### 6.4 Router Proxy HTTP Handler Update
-- [ ] Update the auth middleware in `cmd/router-proxy/` to use `DualValidator`.
-- [ ] Pass the `X-App-ID` header value into the auth context for OAuth token claim mapping.
-- [ ] Ensure the unified `Claims` struct flows into the existing routing logic (`Registry.Lookup(userID, appID)`).
+- [x] Update the auth middleware in `cmd/router-proxy/` to use `DualValidator`.
+- [x] Pass the `X-App-ID` header value into the auth context for OAuth token claim mapping.
+- [x] Ensure the unified `Claims` struct flows into the existing routing logic (`Registry.Lookup(userID, appID)`).
 
 ### 6.5 Configuration & Startup
-- [ ] Read `OAUTH_PUBLIC_KEY` from environment at startup.
-- [ ] Read `OAUTH_ISSUER` (default: `whatsadk-gateway`) and `OAUTH_AUDIENCE` (default: `adk-cloud-proxy`) from environment.
-- [ ] If `OAUTH_PUBLIC_KEY` is set, create an `OAuthValidator` and pass it to `DualValidator`.
-- [ ] Log: `🔑 WhatsApp OAuth verification enabled (EdDSA)` on startup.
-- [ ] Update `Dockerfile.router-proxy` to document the new env vars.
+- [x] Read `OAUTH_PUBLIC_KEY` from environment at startup.
+- [x] Read `OAUTH_ISSUER` (default: `whatsadk-gateway`) and `OAUTH_AUDIENCE` (default: `adk-cloud-proxy`) from environment.
+- [x] If `OAUTH_PUBLIC_KEY` is set, create an `OAuthValidator` and pass it to `DualValidator`.
+- [x] Log: `🔑 WhatsApp OAuth verification enabled (EdDSA)` on startup.
+- [x] Update `Dockerfile.router-proxy` to document the new env vars.
 
 ### 6.6 Testing
-- [ ] `pkg/auth/oauth_test.go`:
+- [x] `pkg/auth/oauth_test.go`:
   - Generate an Ed25519 key pair in the test.
   - Sign a JWT with the private key using `golang-jwt/jwt/v5`.
   - Verify it with `OAuthValidator` using the public key.
@@ -127,7 +127,7 @@ This plan outlines the steps to build and deploy the ADK Server Router Proxy and
   - Test: wrong issuer → error.
   - Test: wrong audience → error.
   - Test: tampered signature → error.
-- [ ] `pkg/auth/dual_validator_test.go`:
+- [x] `pkg/auth/dual_validator_test.go`:
   - NATS JWT passes → returns NATS claims.
   - NATS JWT fails, OAuth JWT passes → returns OAuth claims.
   - Both fail → returns error.
@@ -135,7 +135,7 @@ This plan outlines the steps to build and deploy the ADK Server Router Proxy and
 - [ ] Integration test: SPA-style OAuth JWT → Router Proxy → Connector → Target Server.
 
 ### 6.7 Documentation
-- [ ] Update `README.md` with:
+- [x] Update `README.md` with:
   - WhatsApp OAuth setup instructions (how to set `OAUTH_PUBLIC_KEY`).
   - Explanation of dual auth (NATS + OAuth).
   - `X-App-ID` header requirement for SPA clients.

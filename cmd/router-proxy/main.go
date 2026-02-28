@@ -31,7 +31,7 @@ import (
 type server struct {
 	pb.UnimplementedTunnelServiceServer
 	registry  *router.Registry
-	validator *auth.Validator
+	validator *auth.DualValidator
 }
 
 // Connect handles the bi-directional stream from a Connector.
@@ -47,7 +47,7 @@ func (s *server) Connect(stream pb.TunnelService_ConnectServer) error {
 	}
 	tokenStr := strings.TrimPrefix(tokens[0], "Bearer ")
 
-	claims, err := s.validator.Validate(tokenStr)
+	claims, err := s.validator.Validate(tokenStr, "")
 	if err != nil {
 		slog.Warn("connector authentication failed", "error", err)
 		return status.Errorf(codes.Unauthenticated, "authentication failed: %v", err)
@@ -83,8 +83,9 @@ func (s *server) handleADKRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
+	appID := r.Header.Get("X-App-ID")
 
-	claims, err := s.validator.Validate(tokenStr)
+	claims, err := s.validator.Validate(tokenStr, appID)
 	if err != nil {
 		slog.Warn("client authentication failed", "error", err, "method", r.Method, "path", r.URL.Path)
 		http.Error(w, fmt.Sprintf("authentication failed: %v", err), http.StatusUnauthorized)
@@ -187,15 +188,33 @@ func main() {
 
 	grpcPort := os.Getenv("GRPC_PORT")
 
-	validator, err := auth.NewValidator(issuerPubKey)
+	natsValidator, err := auth.NewValidator(issuerPubKey)
 	if err != nil {
-		slog.Error("failed to create validator", "error", err)
+		slog.Error("failed to create NATS validator", "error", err)
 		os.Exit(1)
+	}
+
+	var oauthValidator *auth.OAuthValidator
+	if oauthPubKey := os.Getenv("OAUTH_PUBLIC_KEY"); oauthPubKey != "" {
+		oauthIssuer := os.Getenv("OAUTH_ISSUER")
+		if oauthIssuer == "" {
+			oauthIssuer = "whatsadk-gateway"
+		}
+		oauthAudience := os.Getenv("OAUTH_AUDIENCE")
+		if oauthAudience == "" {
+			oauthAudience = "adk-cloud-proxy"
+		}
+		oauthValidator, err = auth.NewOAuthValidator(oauthPubKey, oauthIssuer, oauthAudience)
+		if err != nil {
+			slog.Error("failed to create OAuth validator", "error", err)
+			os.Exit(1)
+		}
+		slog.Info("🔑 WhatsApp OAuth verification enabled (EdDSA)")
 	}
 
 	srv := &server{
 		registry:  router.NewRegistry(),
-		validator: validator,
+		validator: auth.NewDualValidator(natsValidator, oauthValidator),
 	}
 
 	grpcServer := grpc.NewServer()
