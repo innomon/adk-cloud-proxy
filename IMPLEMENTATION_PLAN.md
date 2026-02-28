@@ -43,11 +43,11 @@ This plan outlines the steps to build and deploy the ADK Server Router Proxy and
     - Send the response back through the tunnel.
 
 ## Phase 4: Integration & Testing
-- [ ] Create a "Hello World" ADK server (target server).
-- [ ] Create a "Mock Chatbot" client that signs JWTs with NKeys.
-- [ ] Perform end-to-end testing:
+- [x] Create a "Hello World" ADK server (target server).
+- [x] Create a "Mock Chatbot" client that signs JWTs with NKeys.
+- [x] Perform end-to-end testing:
     - Chatbot -> Router Proxy -> Connector -> Target Server.
-- [ ] Validate authentication failures and routing edge cases.
+- [x] Validate authentication failures and routing edge cases.
 
 ## Phase 5: Cloud Run Deployment
 - [ ] Create a multi-stage `Dockerfile` for the Router Proxy.
