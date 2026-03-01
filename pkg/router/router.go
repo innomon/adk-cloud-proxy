@@ -37,13 +37,19 @@ func NewRegistry() *Registry {
 // Register adds a connector stream to the registry.
 func (r *Registry) Register(userID, appID string, stream pb.TunnelService_ConnectServer) *ConnectorStream {
 	key := routeKey{UserID: userID, AppID: appID}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	// If a stream already exists, we should probably close it to avoid leaks.
+	if existing, ok := r.streams[key]; ok {
+		existing.CleanupPending()
+	}
+
 	cs := &ConnectorStream{
 		Stream:  stream,
 		Pending: make(map[string]chan *pb.TunnelMessage),
 	}
-	r.mu.Lock()
 	r.streams[key] = cs
-	r.mu.Unlock()
 	return cs
 }
 

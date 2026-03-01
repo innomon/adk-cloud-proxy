@@ -52,6 +52,11 @@ func (n *natsPubSub) Subscribe(ctx context.Context, subject string, handler Hand
 		return err
 	}
 
+	go func() {
+		<-ctx.Done()
+		sub.Unsubscribe()
+	}()
+
 	n.subs[subject] = sub
 	return nil
 }

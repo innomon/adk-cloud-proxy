@@ -139,24 +139,23 @@ func main() {
 				sessions := connector.activeSessions
 				idleTime := time.Since(connector.lastActive)
 				numConns := len(connector.connections)
-				connector.mu.Unlock()
 
 				if sessions == 0 && numConns > 0 && idleTime > 5*time.Minute {
 					log.Println("Inactivity timeout reached, closing connections...")
-					connector.mu.Lock()
 					for url, cancelFunc := range connector.connections {
 						log.Printf("Closing connection to %s", url)
 						cancelFunc()
 						delete(connector.connections, url)
 					}
-					connector.mu.Unlock()
 				}
 				
 				if sessions == 0 && numConns == 0 && idleTime > 10*time.Minute {
+					connector.mu.Unlock()
 					log.Println("No active connections or sessions for 10 minutes, shutting down connector...")
 					cancel()
 					return
 				}
+				connector.mu.Unlock()
 			case <-ctx.Done():
 				return
 			}

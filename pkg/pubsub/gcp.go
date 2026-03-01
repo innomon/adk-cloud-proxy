@@ -3,6 +3,7 @@ package pubsub
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"cloud.google.com/go/pubsub"
 )
@@ -33,7 +34,15 @@ func (g *gcpPubSub) Publish(ctx context.Context, subject string, payload []byte)
 }
 
 func (g *gcpPubSub) Subscribe(ctx context.Context, subject string, handler Handler) error {
-	sub := g.client.Subscription(subject) // Assumes subscription name is same as subject or pre-created
+	sub := g.client.Subscription(subject)
+	exists, err := sub.Exists(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to check subscription existence: %w", err)
+	}
+	if !exists {
+		return fmt.Errorf("subscription %q does not exist", subject)
+	}
+
 	go func() {
 		err := sub.Receive(ctx, func(ctx context.Context, msg *pubsub.Message) {
 			handler(&Message{
@@ -43,7 +52,7 @@ func (g *gcpPubSub) Subscribe(ctx context.Context, subject string, handler Handl
 			msg.Ack()
 		})
 		if err != nil {
-			fmt.Printf("GCP Subscription error: %v\n", err)
+			slog.Error("GCP Subscription error", "subject", subject, "error", err)
 		}
 	}()
 	return nil

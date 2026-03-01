@@ -3,6 +3,7 @@ package pubsub
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/go-redis/redis/v8"
 )
@@ -42,6 +43,7 @@ func (r *redisPubSub) Subscribe(ctx context.Context, subject string, handler Han
 			select {
 			case msg, ok := <-ch:
 				if !ok {
+					slog.Warn("Redis subscription channel closed", "subject", subject)
 					return
 				}
 				handler(&Message{
