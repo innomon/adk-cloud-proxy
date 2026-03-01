@@ -64,4 +64,4 @@ The Router Proxy supports **dual authentication**:
 - `ROUTER_PROXY_URL`: (Legacy/Fallback) Immediate connection target.
 
 ## License
-TBD
+Apache 2.0
