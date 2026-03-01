@@ -10,10 +10,13 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/innomon/adk-cloud-proxy/pkg/auth"
+	"github.com/innomon/adk-cloud-proxy/pkg/config"
+	"github.com/innomon/adk-cloud-proxy/pkg/pubsub"
 	pb "github.com/innomon/adk-cloud-proxy/pkg/tunnel"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -21,10 +24,18 @@ import (
 	"google.golang.org/grpc/metadata"
 )
 
+type Connector struct {
+	mu           sync.Mutex
+	connections  map[string]context.CancelFunc // proxyURL -> cancel func
+	activeSessions int32
+	lastActive   time.Time
+}
+
 func main() {
-	routerProxyURL := os.Getenv("ROUTER_PROXY_URL")
-	if routerProxyURL == "" {
-		log.Fatal("ROUTER_PROXY_URL environment variable is required")
+	cfg, err := config.LoadConfig("config.yaml")
+	if err != nil {
+		log.Printf("Warning: failed to load config.yaml: %v", err)
+		cfg = &config.Config{}
 	}
 
 	nkeySeed := os.Getenv("NKEY_SEED")
@@ -55,28 +66,107 @@ func main() {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
+	connector := &Connector{
+		connections: make(map[string]context.CancelFunc),
+		lastActive:  time.Now(),
+	}
+
 	go func() {
 		<-sigCh
 		log.Println("Shutting down connector...")
 		cancel()
 	}()
 
-	// Reconnect loop.
-	for {
-		if err := runTunnel(ctx, routerProxyURL, []byte(nkeySeed), targetURL, userID, appID, useTLS); err != nil {
-			if ctx.Err() != nil {
-				log.Println("Connector stopped")
+	// Initialize PubSub if configured
+	var ps pubsub.PubSub
+	if cfg.PubSub.Type != "" {
+		ps, err = pubsub.New(cfg.PubSub.Type, cfg.PubSub.Config)
+		if err != nil {
+			log.Fatalf("Failed to initialize pubsub: %v", err)
+		}
+		defer ps.Close()
+		log.Printf("PubSub initialized: %s", cfg.PubSub.Type)
+
+		subject := "invites." + appID
+		err = ps.Subscribe(ctx, subject, func(msg *pubsub.Message) {
+			invite, err := pubsub.DecodeInviteMessage(msg.Payload)
+			if err != nil {
+				log.Printf("Failed to decode invite: %v", err)
 				return
 			}
-			log.Printf("Tunnel disconnected: %v. Reconnecting in 5s...", err)
-			time.Sleep(5 * time.Second)
-			continue
+			if invite.AppID != appID || invite.UserID != userID {
+				return
+			}
+
+			connector.mu.Lock()
+			if _, exists := connector.connections[invite.ProxyURL]; !exists {
+				log.Printf("Received invite to connect to %s", invite.ProxyURL)
+				connCtx, connCancel := context.WithCancel(ctx)
+				connector.connections[invite.ProxyURL] = connCancel
+				go func() {
+					defer func() {
+						connector.mu.Lock()
+						delete(connector.connections, invite.ProxyURL)
+						connector.mu.Unlock()
+					}()
+					if err := runTunnel(connCtx, invite.ProxyURL, []byte(nkeySeed), targetURL, userID, appID, useTLS, connector); err != nil {
+						log.Printf("Tunnel to %s failed: %v", invite.ProxyURL, err)
+					}
+				}()
+			}
+			connector.mu.Unlock()
+		})
+		if err != nil {
+			log.Fatalf("Failed to subscribe to invites: %v", err)
 		}
-		return
+		log.Printf("Subscribed to %s", subject)
+	} else {
+		// Legacy behavior if no pubsub configured: connect immediately to ROUTER_PROXY_URL
+		routerProxyURL := os.Getenv("ROUTER_PROXY_URL")
+		if routerProxyURL != "" {
+			go runTunnel(ctx, routerProxyURL, []byte(nkeySeed), targetURL, userID, appID, useTLS, connector)
+		}
 	}
+
+	// Inactivity monitor
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				connector.mu.Lock()
+				sessions := connector.activeSessions
+				idleTime := time.Since(connector.lastActive)
+				numConns := len(connector.connections)
+				connector.mu.Unlock()
+
+				if sessions == 0 && numConns > 0 && idleTime > 5*time.Minute {
+					log.Println("Inactivity timeout reached, closing connections...")
+					connector.mu.Lock()
+					for url, cancelFunc := range connector.connections {
+						log.Printf("Closing connection to %s", url)
+						cancelFunc()
+						delete(connector.connections, url)
+					}
+					connector.mu.Unlock()
+				}
+				
+				if sessions == 0 && numConns == 0 && idleTime > 10*time.Minute {
+					log.Println("No active connections or sessions for 10 minutes, shutting down connector...")
+					cancel()
+					return
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	<-ctx.Done()
 }
 
-func runTunnel(ctx context.Context, proxyURL string, seed []byte, targetURL, userID, appID string, useTLS bool) error {
+func runTunnel(ctx context.Context, proxyURL string, seed []byte, targetURL, userID, appID string, useTLS bool, c *Connector) error {
 	// Generate JWT.
 	token, err := auth.GenerateToken(seed, userID, appID, "", 1*time.Hour)
 	if err != nil {
@@ -119,11 +209,23 @@ func runTunnel(ctx context.Context, proxyURL string, seed []byte, targetURL, use
 			return err
 		}
 
-		go handleTunnelRequest(stream, msg, targetURL)
+		go handleTunnelRequest(stream, msg, targetURL, c)
 	}
 }
 
-func handleTunnelRequest(stream pb.TunnelService_ConnectClient, msg *pb.TunnelMessage, targetURL string) {
+func handleTunnelRequest(stream pb.TunnelService_ConnectClient, msg *pb.TunnelMessage, targetURL string, c *Connector) {
+	c.mu.Lock()
+	c.activeSessions++
+	c.lastActive = time.Now()
+	c.mu.Unlock()
+
+	defer func() {
+		c.mu.Lock()
+		c.activeSessions--
+		c.lastActive = time.Now()
+		c.mu.Unlock()
+	}()
+
 	httpReq := msg.GetHttpRequest()
 	if httpReq == nil {
 		log.Printf("Received non-request message for request_id=%s, ignoring", msg.RequestId)

@@ -15,7 +15,9 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/innomon/adk-cloud-proxy/pkg/auth"
+	"github.com/innomon/adk-cloud-proxy/pkg/config"
 	"github.com/innomon/adk-cloud-proxy/pkg/logging"
+	"github.com/innomon/adk-cloud-proxy/pkg/pubsub"
 	"github.com/innomon/adk-cloud-proxy/pkg/router"
 	pb "github.com/innomon/adk-cloud-proxy/pkg/tunnel"
 	"golang.org/x/net/http2"
@@ -32,6 +34,8 @@ type server struct {
 	pb.UnimplementedTunnelServiceServer
 	registry  *router.Registry
 	validator *auth.DualValidator
+	pubsub    pubsub.PubSub
+	config    *config.Config
 }
 
 // Connect handles the bi-directional stream from a Connector.
@@ -100,8 +104,25 @@ func (s *server) handleADKRequest(w http.ResponseWriter, r *http.Request) {
 	// Look up the connector stream.
 	cs, err := s.registry.Lookup(claims.UserID, claims.AppID)
 	if err != nil {
-		logger.Warn("no connector available", "error", err)
-		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		logger.Warn("no connector available, sending invite", "error", err)
+
+		// Send Pub/Sub invite
+		invite := &pubsub.InviteMessage{
+			AppID:    claims.AppID,
+			UserID:   claims.UserID,
+			ProxyURL: s.config.Proxy.URL,
+		}
+		data, err := pubsub.EncodeInviteMessage(invite)
+		if err == nil && s.pubsub != nil {
+			subject := fmt.Sprintf("invites.%s", claims.AppID)
+			if pErr := s.pubsub.Publish(r.Context(), subject, data); pErr != nil {
+				logger.Error("failed to publish invite", "error", pErr)
+			} else {
+				logger.Info("invite published", "subject", subject)
+			}
+		}
+
+		http.Error(w, "please wait, preparing connection", http.StatusServiceUnavailable)
 		return
 	}
 
@@ -175,6 +196,28 @@ func (s *server) handleADKRequest(w http.ResponseWriter, r *http.Request) {
 func main() {
 	logging.Setup()
 
+	cfg, err := config.LoadConfig("config.yaml")
+	if err != nil {
+		slog.Warn("failed to load config.yaml, using defaults", "error", err)
+		cfg = &config.Config{}
+	}
+
+	// Override from env if provided
+	if proxyURL := os.Getenv("PROXY_URL"); proxyURL != "" {
+		cfg.Proxy.URL = proxyURL
+	}
+
+	var ps pubsub.PubSub
+	if cfg.PubSub.Type != "" {
+		ps, err = pubsub.New(cfg.PubSub.Type, cfg.PubSub.Config)
+		if err != nil {
+			slog.Error("failed to initialize pubsub", "error", err)
+			os.Exit(1)
+		}
+		defer ps.Close()
+		slog.Info("pubsub initialized", "type", cfg.PubSub.Type)
+	}
+
 	issuerPubKey := os.Getenv("ISSUER_PUBLIC_KEY")
 	if issuerPubKey == "" {
 		slog.Error("ISSUER_PUBLIC_KEY environment variable is required")
@@ -215,6 +258,8 @@ func main() {
 	srv := &server{
 		registry:  router.NewRegistry(),
 		validator: auth.NewDualValidator(natsValidator, oauthValidator),
+		pubsub:    ps,
+		config:    cfg,
 	}
 
 	grpcServer := grpc.NewServer()

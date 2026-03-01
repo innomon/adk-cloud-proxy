@@ -1,0 +1,6 @@
+pubsub:
+  type: "nats"
+  config:
+    url: "nats://localhost:4222"
+proxy:
+  url: "http://localhost:8080" # This should be the address the connector uses to reach this instance.
