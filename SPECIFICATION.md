@@ -2,6 +2,47 @@
 
 This document specifies the architecture and design for an ADK (Agent Development Kit) Server Router Proxy running on Google Cloud Run. This proxy enables chatbots and other clients to connect to ADK servers running behind firewalls via "Connectors" (reverse proxy agents) using a Just-In-Time (JIT) activation model.
 
+## Design Refinement
+
+**Current limitation**  
+The connector always initiates a persistent connection to an **ADK Proxy** running on Cloud Run.
+
+This design creates two main problems:
+
+- It prevents ADK Proxy instances from **scaling to zero** (they must stay running to accept connections).  
+- New ADK Proxy instances cannot route traffic back to a connector that lives on a different instance.
+
+**Proposed solution: Just-in-Time (JIT) connector**  
+Switch to a **pull/event-driven model** instead of proactive persistent connections.
+
+**How the JIT connector works**
+
+1. The connector **no longer** proactively connects to an ADK Proxy.  
+   Instead, it listens passively for events via **Pub/Sub**.
+
+2. When a **Chat Client** connects to an ADK Proxy:  
+   - The proxy first checks whether any connector for the same **AppID** is already connected.  
+   - **If yes** → open another session and tunnel it through the existing connector.  
+   - **If no** →  
+     - Immediately reply to the chat client:  
+       *"Please wait, preparing connection..."*  
+     - Publish a message to **Pub/Sub** inviting a connector to connect to *this specific ADK Proxy instance*.
+
+3. The connector (listening on Pub/Sub) receives the invitation → establishes a connection to that ADK Proxy instance → the tunnel is ready.
+
+4. **Idle timeout & shutdown**  
+   When no ADK Proxy is connected anymore, the connector waits for a configurable time → then **gracefully shuts down**.
+
+**Key requirements for the new design**
+
+- A single connector instance must handle **multiple sessions** (for the same AppID).  
+- Multiple connectors must be able to run across different ADK Proxy instances (horizontal scaling support).  
+- Pub/Sub configuration (topic, subscription, project, etc.) should be read from a **config.yaml** file.  
+- Include a registry / discovery mechanism for the Pub/Sub service.
+
+This JIT approach allows true **scale-to-zero** for both ADK Proxy and connectors, reduces idle resource usage, and supports multi-instance routing cleanly.
+
+
 ## 1. Overview
 
 The system facilitates communication between a client (e.g., a chatbot) and a target ADK server in a private network. To support Cloud Run's scale-to-zero and multi-instance nature, it uses a Pub/Sub-based JIT activation mechanism.
