@@ -57,12 +57,12 @@ func (s *server) Connect(stream pb.TunnelService_ConnectServer) error {
 		return status.Errorf(codes.Unauthenticated, "authentication failed: %v", err)
 	}
 
-	slog.Info("connector registered", "userid", claims.UserID, "appid", claims.AppID)
-	cs := s.registry.Register(claims.UserID, claims.AppID, stream)
+	slog.Info("connector registered", "appid", claims.AppID)
+	cs := s.registry.Register(claims.AppID, stream)
 	defer func() {
-		s.registry.Unregister(claims.UserID, claims.AppID)
+		s.registry.Unregister(claims.AppID)
 		cs.CleanupPending()
-		slog.Info("connector disconnected", "userid", claims.UserID, "appid", claims.AppID)
+		slog.Info("connector disconnected", "appid", claims.AppID)
 	}()
 
 	// Read responses from the connector and resolve pending requests.
@@ -102,7 +102,7 @@ func (s *server) handleADKRequest(w http.ResponseWriter, r *http.Request) {
 	logger.Info("request received", "method", r.Method, "path", r.URL.Path)
 
 	// Look up the connector stream.
-	cs, err := s.registry.Lookup(claims.UserID, claims.AppID)
+	cs, err := s.registry.Lookup(claims.AppID)
 	if err != nil {
 		logger.Warn("no connector available, sending invite", "error", err)
 
@@ -141,6 +141,9 @@ func (s *server) handleADKRequest(w http.ResponseWriter, r *http.Request) {
 			headers[k] = v[0]
 		}
 	}
+	// Inject identity headers for the target ADK server.
+	headers["X-User-ID"] = claims.UserID
+	headers["X-App-ID"] = claims.AppID
 
 	tunnelMsg := &pb.TunnelMessage{
 		RequestId: requestID,

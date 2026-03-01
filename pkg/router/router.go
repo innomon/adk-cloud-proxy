@@ -7,41 +7,34 @@ import (
 	pb "github.com/innomon/adk-cloud-proxy/pkg/tunnel"
 )
 
-// routeKey is the composite key used to look up a connector stream.
-type routeKey struct {
-	UserID string
-	AppID  string
-}
-
 // ConnectorStream holds the gRPC stream and a channel-based mechanism to
 // correlate requests with responses for a single connector.
 type ConnectorStream struct {
-	Stream   pb.TunnelService_ConnectServer
-	Pending  map[string]chan *pb.TunnelMessage // request_id -> response channel
-	mu       sync.Mutex
+	Stream  pb.TunnelService_ConnectServer
+	Pending map[string]chan *pb.TunnelMessage // request_id -> response channel
+	mu      sync.Mutex
 }
 
-// Registry maintains the mapping from (userid, appid) to active connector streams.
+// Registry maintains the mapping from appid to active connector streams.
 type Registry struct {
 	mu      sync.RWMutex
-	streams map[routeKey]*ConnectorStream
+	streams map[string]*ConnectorStream // appID -> connector stream
 }
 
 // NewRegistry creates a new empty Registry.
 func NewRegistry() *Registry {
 	return &Registry{
-		streams: make(map[routeKey]*ConnectorStream),
+		streams: make(map[string]*ConnectorStream),
 	}
 }
 
 // Register adds a connector stream to the registry.
-func (r *Registry) Register(userID, appID string, stream pb.TunnelService_ConnectServer) *ConnectorStream {
-	key := routeKey{UserID: userID, AppID: appID}
+func (r *Registry) Register(appID string, stream pb.TunnelService_ConnectServer) *ConnectorStream {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	// If a stream already exists, we should probably close it to avoid leaks.
-	if existing, ok := r.streams[key]; ok {
+	if existing, ok := r.streams[appID]; ok {
 		existing.CleanupPending()
 	}
 
@@ -49,26 +42,24 @@ func (r *Registry) Register(userID, appID string, stream pb.TunnelService_Connec
 		Stream:  stream,
 		Pending: make(map[string]chan *pb.TunnelMessage),
 	}
-	r.streams[key] = cs
+	r.streams[appID] = cs
 	return cs
 }
 
 // Unregister removes a connector stream from the registry.
-func (r *Registry) Unregister(userID, appID string) {
-	key := routeKey{UserID: userID, AppID: appID}
+func (r *Registry) Unregister(appID string) {
 	r.mu.Lock()
-	delete(r.streams, key)
+	delete(r.streams, appID)
 	r.mu.Unlock()
 }
 
-// Lookup finds an active connector stream for the given userid and appid.
-func (r *Registry) Lookup(userID, appID string) (*ConnectorStream, error) {
-	key := routeKey{UserID: userID, AppID: appID}
+// Lookup finds an active connector stream for the given appid.
+func (r *Registry) Lookup(appID string) (*ConnectorStream, error) {
 	r.mu.RLock()
-	cs, ok := r.streams[key]
+	cs, ok := r.streams[appID]
 	r.mu.RUnlock()
 	if !ok {
-		return nil, fmt.Errorf("no connector registered for userid=%q appid=%q", userID, appID)
+		return nil, fmt.Errorf("no connector registered for appid=%q", appID)
 	}
 	return cs, nil
 }

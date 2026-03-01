@@ -96,15 +96,25 @@ func TestValidateMissingClaims(t *testing.T) {
 	seed, _ := kp.Seed()
 	pubKey, _ := kp.PublicKey()
 
-	// Token without userid.
+	validator, _ := NewValidator(pubKey)
+
+	// Token without userid. Should succeed.
 	token, err := GenerateToken(seed, "", "app1", "", 1*time.Hour)
 	if err != nil {
 		t.Fatalf("GenerateToken failed: %v", err)
 	}
+	_, err = validator.Validate(token)
+	if err != nil {
+		t.Fatalf("expected validation to succeed with missing userid: %v", err)
+	}
 
-	validator, _ := NewValidator(pubKey)
+	// Token without appid. Should fail.
+	token, err = GenerateToken(seed, "user1", "", "", 1*time.Hour)
+	if err != nil {
+		t.Fatalf("GenerateToken failed: %v", err)
+	}
 	_, err = validator.Validate(token)
 	if err == nil {
-		t.Fatal("expected validation to fail with missing userid")
+		t.Fatal("expected validation to fail with missing appid")
 	}
 }

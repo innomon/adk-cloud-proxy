@@ -57,9 +57,6 @@ func (v *Validator) Validate(tokenStr string) (*Claims, error) {
 	appID, _ := gc.Data["appid"].(string)
 	sessionID, _ := gc.Data["sessionid"].(string)
 
-	if userID == "" {
-		return nil, errors.New("JWT missing required 'userid' claim")
-	}
 	if appID == "" {
 		return nil, errors.New("JWT missing required 'appid' claim")
 	}

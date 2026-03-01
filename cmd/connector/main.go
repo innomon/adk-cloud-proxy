@@ -49,9 +49,7 @@ func main() {
 	}
 
 	userID := os.Getenv("USER_ID")
-	if userID == "" {
-		log.Fatal("USER_ID environment variable is required")
-	}
+	// USER_ID is optional. If empty, this connector acts as a fallback for the AppID.
 
 	appID := os.Getenv("APP_ID")
 	if appID == "" {
@@ -94,7 +92,10 @@ func main() {
 				log.Printf("Failed to decode invite: %v", err)
 				return
 			}
-			if invite.AppID != appID || invite.UserID != userID {
+			if invite.AppID != appID {
+				return
+			}
+			if userID != "" && invite.UserID != userID {
 				return
 			}
 

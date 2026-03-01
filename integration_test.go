@@ -64,9 +64,9 @@ func (s *proxyServer) Connect(stream pb.TunnelService_ConnectServer) error {
 		return status.Errorf(codes.Unauthenticated, "authentication failed: %v", err)
 	}
 
-	cs := s.registry.Register(claims.UserID, claims.AppID, stream)
+	cs := s.registry.Register(claims.AppID, stream)
 	defer func() {
-		s.registry.Unregister(claims.UserID, claims.AppID)
+		s.registry.Unregister(claims.AppID)
 		cs.CleanupPending()
 	}()
 
@@ -96,7 +96,7 @@ func (s *proxyServer) handleADKRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cs, err := s.registry.Lookup(claims.UserID, claims.AppID)
+	cs, err := s.registry.Lookup(claims.AppID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
@@ -114,6 +114,8 @@ func (s *proxyServer) handleADKRequest(w http.ResponseWriter, r *http.Request) {
 			headers[k] = v[0]
 		}
 	}
+	headers["X-User-ID"] = claims.UserID
+	headers["X-App-ID"] = claims.AppID
 
 	requestID := uuid.New().String()
 	tunnelMsg := &pb.TunnelMessage{

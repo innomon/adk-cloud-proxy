@@ -24,9 +24,7 @@ func main() {
 	}
 
 	userID := os.Getenv("USER_ID")
-	if userID == "" {
-		log.Fatal("USER_ID environment variable is required")
-	}
+	// USER_ID is optional.
 
 	appID := os.Getenv("APP_ID")
 	if appID == "" {
