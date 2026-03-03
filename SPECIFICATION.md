@@ -108,6 +108,11 @@ A flexible abstraction layer (`pkg/pubsub`) supporting:
 
 ## 5. Protocols
 - **Client <-> Proxy:** HTTP/gRPC (ADK Protocol).
+    - `POST /apps/{app}/users/{user}/sessions`: Create session.
+    - `GET /apps/{app}/users/{user}/sessions`: List sessions.
+    - `GET /apps/{app}/users/{user}/sessions/{session}`: Get session details.
+    - `POST /apps/{app}/users/{user}/sessions/{session}/run_sse`: Run agent (SSE).
+    - `DELETE /apps/{app}/users/{user}/sessions/{session}`: Stop session.
 - **Connector <-> Proxy:** gRPC Bi-directional Stream.
 - **Control Plane:** Pub/Sub (JSON encoded `InviteMessage`).
 

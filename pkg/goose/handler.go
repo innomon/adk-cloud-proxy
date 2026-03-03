@@ -28,6 +28,7 @@ func NewHandler(sessions *SessionManager, client *Client) *Handler {
 
 	h.mux.HandleFunc("POST /apps/{app}/users/{user}/sessions", h.handleCreateSession)
 	h.mux.HandleFunc("GET /apps/{app}/users/{user}/sessions", h.handleListSessions)
+	h.mux.HandleFunc("GET /apps/{app}/users/{user}/sessions/{session}", h.handleGetSession)
 	h.mux.HandleFunc("POST /apps/{app}/users/{user}/sessions/{session}/run_sse", h.handleRunSSE)
 	h.mux.HandleFunc("DELETE /apps/{app}/users/{user}/sessions/{session}", h.handleDeleteSession)
 
@@ -53,6 +54,25 @@ func (h *Handler) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	_, err := h.sessions.GetOrCreate(r.Context(), adkSessionID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Sprintf("create session: %v", err))
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"id":      adkSessionID,
+		"appName": app,
+		"userId":  user,
+		"state":   map[string]any{},
+		"events":  []any{},
+	})
+}
+
+func (h *Handler) handleGetSession(w http.ResponseWriter, r *http.Request) {
+	app := r.PathValue("app")
+	user := r.PathValue("user")
+	adkSessionID := r.PathValue("session")
+
+	if _, ok := h.sessions.GetGooseSessionID(adkSessionID); !ok {
+		writeError(w, http.StatusNotFound, "session not found")
 		return
 	}
 

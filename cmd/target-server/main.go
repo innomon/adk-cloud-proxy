@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -19,6 +20,8 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /apps/{app}/users/{user}/sessions/{session}", handleGetSession)
+	mux.HandleFunc("POST /apps/{app}/users/{user}/sessions/{session}/run_sse", handleRunSSE)
 	mux.HandleFunc("/", handleRequest)
 
 	srv := &http.Server{
@@ -41,6 +44,52 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	srv.Shutdown(ctx)
+}
+
+func handleGetSession(w http.ResponseWriter, r *http.Request) {
+	app := r.PathValue("app")
+	user := r.PathValue("user")
+	session := r.PathValue("session")
+
+	log.Printf("GET Session: app=%s user=%s session=%s", app, user, session)
+
+	resp := map[string]any{
+		"id":      session,
+		"appName": app,
+		"userId":  user,
+		"state":   map[string]any{},
+		"events":  []any{},
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+func handleRunSSE(w http.ResponseWriter, r *http.Request) {
+	app := r.PathValue("app")
+	user := r.PathValue("user")
+	session := r.PathValue("session")
+
+	log.Printf("POST RunSSE: app=%s user=%s session=%s", app, user, session)
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	// Send a simple mock event.
+	event := map[string]any{
+		"type": "text",
+		"text": fmt.Sprintf("Hello! This is a mock response from target-server for session %s", session),
+	}
+	data, _ := json.Marshal(event)
+	fmt.Fprintf(w, "data: %s\n\n", data)
+	flusher.Flush()
 }
 
 func handleRequest(w http.ResponseWriter, r *http.Request) {

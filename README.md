@@ -63,5 +63,24 @@ The Router Proxy supports **dual authentication**:
 - `TARGET_ADK_SERVER_URL`: Local server to proxy for.
 - `ROUTER_PROXY_URL`: (Legacy/Fallback) Immediate connection target.
 
+## Testing
+
+To run unit tests:
+```bash
+go test ./...
+```
+
+To test the `target-server` mock session endpoints:
+```bash
+# Start target-server
+go run ./cmd/target-server
+
+# Test session details
+curl http://localhost:8081/apps/my-app/users/my-user/sessions/my-session
+
+# Test SSE streaming
+curl -X POST http://localhost:8081/apps/my-app/users/my-user/sessions/my-session/run_sse
+```
+
 ## License
 Apache 2.0

@@ -23,7 +23,7 @@
 ## Phase 4: ADK2Goose Connector
 - [x] **pkg/goose:** Translation layer and session manager.
 - [x] **Reactive Support:** Updated `adk2goose-connector` to support JIT activation.
-- [ ] Add unit tests for `pkg/goose/`.
+- [x] Add unit tests for `pkg/goose/`.
 
 ## Phase 5: Testing & Deployment
 - [x] End-to-end testing with mock clients.
