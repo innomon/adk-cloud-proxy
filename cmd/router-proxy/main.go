@@ -17,6 +17,7 @@ import (
 	"github.com/innomon/adk-cloud-proxy/pkg/auth"
 	"github.com/innomon/adk-cloud-proxy/pkg/config"
 	"github.com/innomon/adk-cloud-proxy/pkg/logging"
+	"github.com/innomon/adk-cloud-proxy/pkg/openai"
 	"github.com/innomon/adk-cloud-proxy/pkg/pubsub"
 	"github.com/innomon/adk-cloud-proxy/pkg/router"
 	pb "github.com/innomon/adk-cloud-proxy/pkg/tunnel"
@@ -227,6 +228,9 @@ func main() {
 		os.Exit(1)
 	}
 
+	issuerSeed := os.Getenv("ISSUER_SEED")
+	// ISSUER_SEED is only required if OpenAI proxy is used, but we'll check it here.
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
@@ -270,6 +274,14 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", srv.handleADKRequest)
+
+	// OpenAI Proxy integration
+	if issuerSeed != "" {
+		oaProxy := openai.NewProxy(cfg, []byte(issuerSeed))
+		mux.HandleFunc("/v1/chat/completions", oaProxy.HandleChatCompletions)
+		mux.HandleFunc("/v1/models", oaProxy.HandleModels)
+		slog.Info("OpenAI-compatible proxy enabled")
+	}
 
 	// Graceful shutdown.
 	sigCh := make(chan os.Signal, 1)

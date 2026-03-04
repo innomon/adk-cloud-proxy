@@ -34,3 +34,20 @@
 - [x] Update README with JIT/PubSub instructions.
 - [x] Update Specification with architecture diagrams.
 - [x] Final build verification (`go build ./cmd/...`).
+
+## Phase 7: OpenAI Proxy Support (New)
+- [x] **Config Extension:** Add `OpenAIConfig` to `pkg/config`.
+- [x] **OpenAI Types (pkg/openai):** Define OpenAI-compatible request/response types.
+- [x] **Translation Logic (pkg/openai):** Implement OpenAI-to-ADK conversion.
+- [x] **Router Proxy Integration:**
+    - [x] Add `/v1/chat/completions` and `/v1/models` handlers.
+    - [x] Support internal JWT signing using `ISSUER_SEED`.
+    - [x] Handle streaming (SSE) and non-streaming responses.
+- [x] **Validation:** Verify with OpenAI SDK or `curl`.
+
+## Phase 8: OpenAI Connector (New)
+- [ ] **Reactive Core:** Implement `cmd/openai-connector` with JIT activation support.
+- [ ] **ADK to OpenAI Translation:** Translate incoming ADK `run_sse` requests to local OpenAI API calls.
+- [ ] **OpenAI to ADK Translation:** Translate local OpenAI SSE streams back to ADK events.
+- [ ] **Inactivity Monitor:** Support graceful shutdown when idle.
+- [ ] **Testing:** Verify tunnel from OpenAI Proxy -> OpenAI Connector -> Ollama.

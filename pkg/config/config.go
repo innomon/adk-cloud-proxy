@@ -11,6 +11,7 @@ import (
 type Config struct {
 	PubSub PubSubConfig `yaml:"pubsub"`
 	Proxy  ProxyConfig  `yaml:"proxy"`
+	OpenAI OpenAIConfig `yaml:"openai"`
 }
 
 // PubSubConfig holds pubsub configuration.
@@ -22,6 +23,12 @@ type PubSubConfig struct {
 // ProxyConfig holds proxy-related configuration.
 type ProxyConfig struct {
 	URL string `yaml:"url"` // The URL the connector should connect to (e.g., Cloud Run URL)
+}
+
+// OpenAIConfig holds OpenAI-compatible proxy settings.
+type OpenAIConfig struct {
+	DefaultAppID  string `yaml:"default_app_id"`
+	DefaultUserID string `yaml:"default_user_id"`
 }
 
 // LoadConfig loads the configuration from a file.

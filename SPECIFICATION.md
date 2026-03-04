@@ -45,7 +45,7 @@ This JIT approach allows true **scale-to-zero** for both ADK Proxy and connector
 
 ## 1. Overview
 
-The system facilitates communication between a client (e.g., a chatbot) and a target ADK server in a private network. To support Cloud Run's scale-to-zero and multi-instance nature, it uses a Pub/Sub-based JIT activation mechanism.
+The system facilitates communication between a client (e.g., a chatbot) and a target ADK or OpenAI server in a private network. To support Cloud Run's scale-to-zero and multi-instance nature, it uses a Pub/Sub-based JIT activation mechanism.
 
 ### 1.1 Architecture Diagram
 
@@ -55,20 +55,35 @@ graph TD
         Chatbot["Chatbot (User Computer)"]
         RouterProxy["ADK Router Proxy (Cloud Run)"]
         PubSub["Pub/Sub (NATS/Redis/GCP)"]
+        OpenAIClient["OpenAI Client (SDK/ChatUI)"]
     end
 
     subgraph "Private Network (Behind Firewall)"
-        Connector["ADK Connector (Reactive Agent)"]
-        TargetADKServer["Target ADK Server"]
+        subgraph "ADK Stack"
+            ADKConnector["ADK Connector"]
+            TargetADKServer["Target ADK Server"]
+        end
+        subgraph "OpenAI Stack"
+            OAConnector["OpenAI Connector"]
+            Ollama["Ollama / Local LLM"]
+        end
     end
 
-    Chatbot -- "1. Request + JWT" --> RouterProxy
+    Chatbot -- "1a. ADK Request + JWT" --> RouterProxy
+    OpenAIClient -- "1b. OpenAI Request" --> RouterProxy
     RouterProxy -- "2. No Connector? Publish Invite" --> PubSub
     RouterProxy -- "3. 503 Preparing Connection" --> Chatbot
-    PubSub -- "4. Notify Connector" --> Connector
-    Connector -- "5. Connect via gRPC" --> RouterProxy
-    RouterProxy -- "6. Forward Request" --> Connector
-    Connector -- "7. Forward to Local Server" --> TargetADKServer
+    PubSub -- "4. Notify Connector (ADK or OpenAI)" --> ADKConnector
+    PubSub -- "4. Notify Connector (ADK or OpenAI)" --> OAConnector
+    
+    ADKConnector -- "5a. Connect via gRPC" --> RouterProxy
+    OAConnector -- "5b. Connect via gRPC" --> RouterProxy
+    
+    RouterProxy -- "6a. Forward ADK Request" --> ADKConnector
+    RouterProxy -- "6b. Forward OpenAI Request" --> OAConnector
+    
+    ADKConnector -- "7a. Forward to Local ADK" --> TargetADKServer
+    OAConnector -- "7b. Translate & Forward" --> Ollama
 ```
 
 ## 2. Components
@@ -76,19 +91,26 @@ graph TD
 ### 2.1 ADK Router Proxy (Cloud Run)
 - **Responsibilities:**
     - Authenticate clients and connectors.
+    - **Single-Port Multiplexing:** Exposes both ADK and OpenAI APIs on a single port (default `8080`) to comply with Cloud Run requirements.
     - **JIT Activation:** If no connector is registered for a `(userid, appid)`, publish an `InviteMessage` to Pub/Sub and return a "preparing connection" status.
     - Maintain a registry of active Connector streams.
     - Forward requests through the appropriate gRPC tunnel.
-- **Config:** Loaded via `config.yaml` (Pub/Sub type/config, Proxy URL).
+    - **OpenAI Translation:** Provide an OpenAI-compatible API surface (`/v1/chat/completions`) that translates requests to the ADK protocol for internal routing.
+- **Config:** Loaded via `config.yaml` (Pub/Sub type/config, Proxy URL, OpenAI defaults).
 
 ### 2.2 ADK Connector (Reactive Agent)
 - **Responsibilities:**
     - **Reactive Connection:** Listen for `InviteMessage` on Pub/Sub (`invites.<appid>`).
     - Establish outbound gRPC tunnels only when invited or when active sessions exist.
-    - **Multi-Proxy Support:** Can maintain concurrent connections to different Proxy instances.
-    - **Graceful Shutdown:** Monitors activity and shuts down after 10 minutes of total inactivity (5 minutes for closing idle tunnels).
+    - Forward raw ADK requests to a local ADK server.
 
-### 2.3 Pub/Sub Registry
+### 2.3 OpenAI Connector (Reactive Agent)
+- **Responsibilities:**
+    - **Reactive Connection:** Listen for `InviteMessage` on Pub/Sub (`invites.<appid>`).
+    - **Translation Layer:** Intercepts ADK requests (`/apps/.../run_sse`) from the tunnel and translates them into OpenAI-compatible requests for local services like Ollama.
+    - **Streaming Translation:** Translates Ollama's OpenAI-compatible SSE stream back into ADK-compatible SSE events for the Proxy.
+
+### 2.4 Pub/Sub Registry
 A flexible abstraction layer (`pkg/pubsub`) supporting:
 - **NATS:** Lightweight, ideal for low-latency signaling.
 - **Redis:** Common for Cloud Run via Memorystore.
@@ -104,15 +126,17 @@ A flexible abstraction layer (`pkg/pubsub`) supporting:
 6. **Subsequent Requests:** The client retries, finds the active connection, and the request is tunneled.
 
 ## 4. Authentication & Security
-(Retained from previous specification: NATS NKey JWTs and EdDSA OAuth JWTs).
+- **ADK Clients:** NATS NKey JWTs or EdDSA OAuth JWTs.
+- **Connectors:** NATS NKey JWTs.
+- **OpenAI Clients:** Static API Key (mapped to a valid ADK JWT internally by the Router Proxy).
 
 ## 5. Protocols
-- **Client <-> Proxy:** HTTP/gRPC (ADK Protocol).
+- **Client <-> Proxy (ADK):**
     - `POST /apps/{app}/users/{user}/sessions`: Create session.
-    - `GET /apps/{app}/users/{user}/sessions`: List sessions.
-    - `GET /apps/{app}/users/{user}/sessions/{session}`: Get session details.
     - `POST /apps/{app}/users/{user}/sessions/{session}/run_sse`: Run agent (SSE).
-    - `DELETE /apps/{app}/users/{user}/sessions/{session}`: Stop session.
+- **Client <-> Proxy (OpenAI):**
+    - `POST /v1/chat/completions`: OpenAI Chat Completions API.
+    - `GET /v1/models`: List available models (AppIDs).
 - **Connector <-> Proxy:** gRPC Bi-directional Stream.
 - **Control Plane:** Pub/Sub (JSON encoded `InviteMessage`).
 
@@ -127,4 +151,7 @@ pubsub:
     url: "nats://localhost:4222"
 proxy:
   url: "https://router-proxy-xyz.a.run.app" # The external URL of the Proxy
+openai:
+  default_app_id: "ollama"
+  default_user_id: "openai-user"
 ```
