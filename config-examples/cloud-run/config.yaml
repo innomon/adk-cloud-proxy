@@ -1,0 +1,9 @@
+pubsub:
+  type: "gcp"
+  config:
+    project_id: "my-project-id" # Replace with your project ID
+proxy:
+  url: "router-proxy-xxxx.a.run.app:443" # The Cloud Run URL for the Router Proxy.
+openai:
+  default_app_id: "ollama"
+  default_user_id: "openai-user"

@@ -1,0 +1,9 @@
+pubsub:
+  type: "nats"
+  config:
+    url: "nats://localhost:4222"
+proxy:
+  url: "localhost:8080" # The endpoint the connector should dial to establish the tunnel.
+openai:
+  default_app_id: "ollama"
+  default_user_id: "openai-user"
