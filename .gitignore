@@ -2,6 +2,7 @@
 /adk2goose-connector
 /connector
 /mock-chatbot
+/openai-connector
 /router-proxy
 /target-server
 
