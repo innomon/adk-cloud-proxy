@@ -55,41 +55,56 @@ graph TD
         Chatbot["Chatbot (User Computer)"]
         RouterProxy["ADK Router Proxy (Cloud Run)"]
         PubSub["Pub/Sub (NATS/Redis/GCP)"]
-        OpenAIClient["OpenAI Client (SDK/ChatUI)"]
-    end
-
-    subgraph "Private Network (Behind Firewall)"
-        subgraph "ADK Stack"
-            ADKConnector["ADK Connector"]
-            TargetADKServer["Target ADK Server"]
+        subgraph "Private Network (Behind Firewall)"
+            subgraph "ADK Stack"
+                ADKConnector["ADK Connector"]
+                TargetADKServer["Target ADK Server"]
+            end
+            subgraph "Multi-Connector Stack"
+                MultiConnector["Multi-Connector"]
+                InProcessADK["In-Process ADK Agents"]
+            end
+            subgraph "OpenAI Stack"
+                OAConnector["OpenAI Connector"]
+                Ollama["Ollama / Local LLM"]
+            end
         end
-        subgraph "OpenAI Stack"
-            OAConnector["OpenAI Connector"]
-            Ollama["Ollama / Local LLM"]
-        end
-    end
 
-    Chatbot -- "1a. ADK Request + JWT" --> RouterProxy
-    OpenAIClient -- "1b. OpenAI Request" --> RouterProxy
-    RouterProxy -- "2. No Connector? Publish Invite" --> PubSub
-    RouterProxy -- "3. 503 Preparing Connection" --> Chatbot
-    PubSub -- "4. Notify Connector (ADK or OpenAI)" --> ADKConnector
-    PubSub -- "4. Notify Connector (ADK or OpenAI)" --> OAConnector
-    
-    ADKConnector -- "5a. Connect via gRPC" --> RouterProxy
-    OAConnector -- "5b. Connect via gRPC" --> RouterProxy
-    
-    RouterProxy -- "6a. Forward ADK Request" --> ADKConnector
-    RouterProxy -- "6b. Forward OpenAI Request" --> OAConnector
-    
-    ADKConnector -- "7a. Forward to Local ADK" --> TargetADKServer
-    OAConnector -- "7b. Translate & Forward" --> Ollama
-```
+        Chatbot -- "1a. ADK Request + JWT" --> RouterProxy
+        OpenAIClient -- "1b. OpenAI Request" --> RouterProxy
+        RouterProxy -- "2. No Connector? Publish Invite" --> PubSub
+        RouterProxy -- "3. 503 Preparing Connection" --> Chatbot
+        PubSub -- "4. Notify Connector (ADK or OpenAI)" --> ADKConnector
+        PubSub -- "4. Notify Connector (ADK or OpenAI)" --> OAConnector
+        PubSub -- "4. Notify Multi-Connector" --> MultiConnector
 
-## 2. Components
+        ADKConnector -- "5a. Connect via gRPC" --> RouterProxy
+        OAConnector -- "5b. Connect via gRPC" --> RouterProxy
+        MultiConnector -- "5c. Connect via gRPC" --> RouterProxy
 
-### 2.1 ADK Router Proxy (Cloud Run)
-- **Responsibilities:**
+        RouterProxy -- "6a. Forward ADK Request" --> ADKConnector
+        RouterProxy -- "6b. Forward OpenAI Request" --> OAConnector
+        RouterProxy -- "6c. Forward ADK Request" --> MultiConnector
+
+        ADKConnector -- "7a. Forward to Local ADK" --> TargetADKServer
+        OAConnector -- "7b. Translate & Forward" --> Ollama
+        MultiConnector -- "7c. Route to In-Process Agent" --> InProcessADK
+        ```
+
+        ## 2. Components
+
+        ### 2.1 ADK Router Proxy (Cloud Run)
+        ...
+        ### 2.3 OpenAI Connector (Reactive Agent)
+        ...
+        ### 2.4 Multi-Connector (In-Process Agent)
+        - **Responsibilities:**
+        - **Multiple AppIDs:** Support multiple identities in a single process.
+        - **In-Process Execution:** Use the `agentic` library to run agents in-process, eliminating the need for an external ADK server.
+        - **Direct Routing:** Parse ADK REST paths and dispatch directly to the appropriate in-memory agent runner.
+
+        ### 2.5 Pub/Sub Registry
+
     - **Authentication:** Authenticate clients and connectors using NATS NKey JWTs or EdDSA OAuth JWTs. Supports pluggable validation strategies (`single_key`, `multi_key`) via a handcrafted registry.
     - **Single-Port Multiplexing:** Exposes both ADK and OpenAI APIs on a single port (default `8080`) to comply with Cloud Run requirements.
     - **JIT Activation:** If no connector is registered for a `(userid, appid)`, publish an `InviteMessage` to Pub/Sub and return a "preparing connection" status.

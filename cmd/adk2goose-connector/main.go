@@ -18,7 +18,7 @@ import (
 
 	"github.com/innomon/adk-cloud-proxy/pkg/auth"
 	"github.com/innomon/adk-cloud-proxy/pkg/config"
-	"github.com/innomon/adk-cloud-proxy/pkg/goose"
+	"github.com/innomon/adk-cloud-proxy/pkg/adk"
 	"github.com/innomon/adk-cloud-proxy/pkg/pubsub"
 	pb "github.com/innomon/adk-cloud-proxy/pkg/tunnel"
 	"google.golang.org/grpc"
@@ -62,16 +62,16 @@ func main() {
 		log.Fatal("APP_ID environment variable is required")
 	}
 
-	gooseBaseURL := envOrDefault("GOOSE_BASE_URL", "http://127.0.0.1:3000")
-	gooseSecret := os.Getenv("GOOSE_SECRET_KEY")
+	adkBaseURL := envOrDefault("GOOSE_BASE_URL", "http://127.0.0.1:3000")
+	adkSecret := os.Getenv("GOOSE_SECRET_KEY")
 	workingDir := envOrDefault("WORKING_DIR", ".")
 
 	useTLS := strings.EqualFold(os.Getenv("TLS_ENABLED"), "true")
 
-	// Create the embedded Goose proxy handler.
-	gooseClient := goose.NewClient(gooseBaseURL, gooseSecret)
-	sessionMgr := goose.NewSessionManager(gooseClient, workingDir)
-	handler := goose.NewHandler(sessionMgr, gooseClient)
+	// Create the embedded ADK proxy handler.
+	adkClient := adk.NewClient(adkBaseURL, adkSecret)
+	sessionMgr := adk.NewSessionManager(adkClient, workingDir)
+	handler := adk.NewHandler(sessionMgr, adkClient)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -86,7 +86,7 @@ func main() {
 
 	go func() {
 		<-sigCh
-		log.Println("Shutting down adk2goose connector...")
+		log.Println("Shutting down adk2adk connector...")
 		cancel()
 	}()
 
@@ -250,7 +250,7 @@ func handleTunnelRequest(stream pb.TunnelService_ConnectClient, msg *pb.TunnelMe
 		return
 	}
 
-	log.Printf("Processing ADK→Goose request: %s %s (request_id=%s)", httpReq.Method, httpReq.Path, msg.RequestId)
+	log.Printf("Processing ADK→ADK request: %s %s (request_id=%s)", httpReq.Method, httpReq.Path, msg.RequestId)
 
 	// Build HTTP request for the embedded handler.
 	req, err := http.NewRequest(httpReq.Method, httpReq.Path, bytes.NewReader(httpReq.Body))
@@ -262,7 +262,7 @@ func handleTunnelRequest(stream pb.TunnelService_ConnectClient, msg *pb.TunnelMe
 		req.Header.Set(k, v)
 	}
 
-	// Serve through the embedded adk2goose handler.
+	// Serve through the embedded adk2adk handler.
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, req)
 

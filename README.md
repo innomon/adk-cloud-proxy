@@ -30,6 +30,38 @@ proxy:
   url: "https://router-proxy-xyz.a.run.app" # Required for JIT invites
 ```
 
+## Components
+
+- **Router Proxy:** Public-facing gateway that authenticates clients and invites connectors.
+- **Connector:** Reactive agent that forwards requests to an external ADK server.
+- **ADK2Goose Connector:** Translator that bridges ADK REST API to Goose protocol.
+- **Multi-Connector:** Runs multiple ADK agents in-process using [agentic](https://github.com/innomon/agentic) configurations.
+
+## Multi-Connector Configuration
+
+The multi-connector allows hosting multiple AppIDs in a single process. It uses a `multi-config.yaml` to define its agents.
+
+### multi-config.yaml Example
+
+```yaml
+connectors:
+  - app_id: "weather-app"
+    nkey_seed_env: "NKEY_SEED_WEATHER"
+    agentic_config: "config/weather.yaml"
+  - app_id: "news-app"
+    nkey_seed_env: "NKEY_SEED_NEWS"
+    agentic_config: "config/news.yaml"
+pubsub:
+  type: "nats"
+  config:
+    url: "nats://localhost:4222"
+```
+
+Start the multi-connector:
+```bash
+go run ./cmd/multi-connector
+```
+
 ## Quick Start (Local)
 
 1. **Generate NKeys:** Use `nk` to create operator key pairs.
@@ -42,6 +74,10 @@ proxy:
 5. **Start Connector:**
    ```bash
    USER_ID=<uid> APP_ID=<aid> NKEY_SEED=<seed> TARGET_ADK_SERVER_URL=http://localhost:8080 go run ./cmd/connector
+   ```
+6. **Start Multi-Connector (Alternative):**
+   ```bash
+   NKEY_SEED_WEATHER=<seed1> NKEY_SEED_NEWS=<seed2> go run ./cmd/multi-connector
    ```
 
 ## Authentication

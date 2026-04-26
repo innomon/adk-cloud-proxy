@@ -5,6 +5,7 @@
 /openai-connector
 /router-proxy
 /target-server
+/multi-connector
 
 # Go build artifacts
 *.exe

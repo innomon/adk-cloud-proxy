@@ -17,7 +17,7 @@ import (
 
 	"github.com/innomon/adk-cloud-proxy/pkg/auth"
 	"github.com/innomon/adk-cloud-proxy/pkg/config"
-	"github.com/innomon/adk-cloud-proxy/pkg/goose"
+	"github.com/innomon/adk-cloud-proxy/pkg/adk"
 	"github.com/innomon/adk-cloud-proxy/pkg/pubsub"
 	pb "github.com/innomon/adk-cloud-proxy/pkg/tunnel"
 	"google.golang.org/grpc"
@@ -31,7 +31,7 @@ type MultiConnector struct {
 	connections    map[string]context.CancelFunc // key: proxyURL+appID -> cancel func
 	activeSessions int32
 	lastActive     time.Time
-	handlers       map[string]*goose.InProcessADKHandler // appID -> InProcessADKHandler
+	handlers       map[string]*adk.InProcessADKHandler // appID -> InProcessADKHandler
 }
 
 func main() {
@@ -49,7 +49,7 @@ func main() {
 	connector := &MultiConnector{
 		connections: make(map[string]context.CancelFunc),
 		lastActive:  time.Now(),
-		handlers:    make(map[string]*goose.InProcessADKHandler),
+		handlers:    make(map[string]*adk.InProcessADKHandler),
 	}
 
 	go func() {
@@ -68,12 +68,12 @@ func main() {
 
 	// Initialize runners and handlers for each connector
 	for _, ccfg := range cfg.Connectors {
-		mr, err := goose.NewMultiRunner(ctx, ccfg.AgenticConfig)
+		mr, err := adk.NewMultiRunner(ctx, ccfg.AgenticConfig)
 		if err != nil {
 			log.Printf("Warning: failed to initialize runners for AppID %s: %v", ccfg.AppID, err)
 			continue
 		}
-		connector.handlers[ccfg.AppID] = goose.NewInProcessADKHandler(mr)
+		connector.handlers[ccfg.AppID] = adk.NewInProcessADKHandler(mr)
 
 		nkeySeed := os.Getenv(ccfg.NKeySeedEnv)
 		if nkeySeed == "" {

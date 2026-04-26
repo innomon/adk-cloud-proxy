@@ -62,9 +62,9 @@ Create a `multi-connector` that supports multiple AppIds and runs multiple ADK i
 - [x] Implement lookup logic for the correct runner based on `AppID` (from tunnel) and `AgentName` (from path).
 
 ### Phase 5: Verification
-- [ ] Create a mock `agentic` config for testing.
-- [ ] Run `multi-connector` and verify it responds to invites for multiple AppIds.
-- [ ] Verify requests are correctly routed to the in-process agents.
+- [x] Create a mock `agentic` config for testing.
+- [x] Run `multi-connector` and verify it responds to invites for multiple AppIds.
+- [x] Verify requests are correctly routed to the in-process agents.
 
 ## Verification Plan
 - Use `target-server` as a reference for expected ADK REST responses.
