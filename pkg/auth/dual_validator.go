@@ -6,13 +6,13 @@ import "fmt"
 // EdDSA OAuth validation if configured. This allows both Connector/Chatbot
 // clients (NATS JWTs) and SPA clients (OAuth JWTs) to authenticate.
 type DualValidator struct {
-	nats  *Validator
+	nats  Validator
 	oauth *OAuthValidator // nil if OAuth is not configured
 }
 
 // NewDualValidator creates a DualValidator. The oauth parameter may be nil,
 // in which case only NATS JWT validation is active.
-func NewDualValidator(nats *Validator, oauth *OAuthValidator) *DualValidator {
+func NewDualValidator(nats Validator, oauth *OAuthValidator) *DualValidator {
 	return &DualValidator{nats: nats, oauth: oauth}
 }
 

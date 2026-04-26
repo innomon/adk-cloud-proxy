@@ -226,11 +226,6 @@ func main() {
 	}
 
 	issuerPubKey := os.Getenv("ISSUER_PUBLIC_KEY")
-	if issuerPubKey == "" {
-		slog.Error("ISSUER_PUBLIC_KEY environment variable is required")
-		os.Exit(1)
-	}
-
 	issuerSeed := os.Getenv("ISSUER_SEED")
 	// ISSUER_SEED is only required if OpenAI proxy is used, but we'll check it here.
 
@@ -241,9 +236,26 @@ func main() {
 
 	grpcPort := os.Getenv("GRPC_PORT")
 
-	natsValidator, err := auth.NewValidator(issuerPubKey)
-	if err != nil {
-		slog.Error("failed to create NATS validator", "error", err)
+	// Initialize NATS validator
+	var natsValidator auth.Validator
+	if cfg.Auth.Type != "" {
+		natsValidator, err = auth.CreateValidator(cfg.Auth.Type, cfg.Auth.Config)
+		if err != nil {
+			slog.Error("failed to create NATS validator from config", "error", err)
+			os.Exit(1)
+		}
+		slog.Info("NATS validator initialized from config", "type", cfg.Auth.Type)
+	} else if issuerPubKey != "" {
+		natsValidator, err = auth.CreateValidator("single_key", map[string]interface{}{
+			"public_key": issuerPubKey,
+		})
+		if err != nil {
+			slog.Error("failed to create NATS validator from ISSUER_PUBLIC_KEY", "error", err)
+			os.Exit(1)
+		}
+		slog.Info("NATS validator initialized from ISSUER_PUBLIC_KEY")
+	} else {
+		slog.Error("NATS validator configuration is missing (need Auth config or ISSUER_PUBLIC_KEY)")
 		os.Exit(1)
 	}
 

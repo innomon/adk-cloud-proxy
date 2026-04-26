@@ -19,23 +19,28 @@ type Claims struct {
 }
 
 // Validator validates JWTs signed with NKeys.
-type Validator struct {
+type Validator interface {
+	Validate(tokenStr string) (*Claims, error)
+}
+
+// SingleKeyValidator validates JWTs signed with a single specific NKey public key.
+type SingleKeyValidator struct {
 	issuerPubKey string
 }
 
-// NewValidator creates a Validator that accepts tokens signed by the given
+// NewValidator creates a SingleKeyValidator that accepts tokens signed by the given
 // issuer public key (an NKey encoded Ed25519 public key).
-func NewValidator(issuerPubKey string) (*Validator, error) {
+func NewValidator(issuerPubKey string) (*SingleKeyValidator, error) {
 	if _, err := nkeys.FromPublicKey(issuerPubKey); err != nil {
 		return nil, fmt.Errorf("invalid issuer public key: %w", err)
 	}
-	return &Validator{issuerPubKey: issuerPubKey}, nil
+	return &SingleKeyValidator{issuerPubKey: issuerPubKey}, nil
 }
 
 // Validate parses and validates the raw JWT string. DecodeGeneric verifies
 // the Ed25519 signature. This method additionally checks that the issuer
 // matches the expected public key and that the token is not expired.
-func (v *Validator) Validate(tokenStr string) (*Claims, error) {
+func (v *SingleKeyValidator) Validate(tokenStr string) (*Claims, error) {
 	// DecodeGeneric verifies the signature as part of decoding.
 	gc, err := jwt.DecodeGeneric(tokenStr)
 	if err != nil {

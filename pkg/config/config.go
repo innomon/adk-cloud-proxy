@@ -12,6 +12,13 @@ type Config struct {
 	PubSub PubSubConfig `yaml:"pubsub"`
 	Proxy  ProxyConfig  `yaml:"proxy"`
 	OpenAI OpenAIConfig `yaml:"openai"`
+	Auth   AuthConfig   `yaml:"auth"`
+}
+
+// AuthConfig holds the configuration for pluggable auth validators.
+type AuthConfig struct {
+	Type   string                 `yaml:"type"`
+	Config map[string]interface{} `yaml:"config"`
 }
 
 // PubSubConfig holds pubsub configuration.

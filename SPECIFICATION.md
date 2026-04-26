@@ -90,7 +90,7 @@ graph TD
 
 ### 2.1 ADK Router Proxy (Cloud Run)
 - **Responsibilities:**
-    - Authenticate clients and connectors.
+    - **Authentication:** Authenticate clients and connectors using NATS NKey JWTs or EdDSA OAuth JWTs. Supports pluggable validation strategies (`single_key`, `multi_key`) via a handcrafted registry.
     - **Single-Port Multiplexing:** Exposes both ADK and OpenAI APIs on a single port (default `8080`) to comply with Cloud Run requirements.
     - **JIT Activation:** If no connector is registered for a `(userid, appid)`, publish an `InviteMessage` to Pub/Sub and return a "preparing connection" status.
     - Maintain a registry of active Connector streams.
