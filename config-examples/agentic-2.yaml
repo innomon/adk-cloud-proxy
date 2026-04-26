@@ -1,0 +1,4 @@
+agents:
+  news-agent:
+    model: "mock"
+    instructions: "You are a news agent."

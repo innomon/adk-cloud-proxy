@@ -1,0 +1,11 @@
+connectors:
+  - app_id: "app-1"
+    nkey_seed_env: "NKEY_SEED_1"
+    agentic_config: "config-examples/agentic-1.yaml"
+  - app_id: "app-2"
+    nkey_seed_env: "NKEY_SEED_2"
+    agentic_config: "config-examples/agentic-2.yaml"
+pubsub:
+  type: "nats"
+  config:
+    url: "nats://localhost:4222"

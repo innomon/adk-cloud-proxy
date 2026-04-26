@@ -1,0 +1,4 @@
+agents:
+  weather-agent:
+    model: "mock"
+    instructions: "You are a weather agent."

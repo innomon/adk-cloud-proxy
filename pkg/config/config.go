@@ -15,6 +15,20 @@ type Config struct {
 	Auth   AuthConfig   `yaml:"auth"`
 }
 
+// MultiConnectorConfig represents configuration for multiple connectors.
+type MultiConnectorConfig struct {
+	PubSub     PubSubConfig      `yaml:"pubsub"`
+	Connectors []ConnectorConfig `yaml:"connectors"`
+}
+
+// ConnectorConfig represents a single connector's configuration.
+type ConnectorConfig struct {
+	AppID         string `yaml:"app_id"`
+	NKeySeedEnv   string `yaml:"nkey_seed_env"`
+	AgenticConfig string `yaml:"agentic_config"`
+	UserID        string `yaml:"user_id,omitempty"`
+}
+
 // AuthConfig holds the configuration for pluggable auth validators.
 type AuthConfig struct {
 	Type   string                 `yaml:"type"`
@@ -50,6 +64,21 @@ func LoadConfig(path string) (*Config, error) {
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %v", err)
+	}
+
+	return &cfg, nil
+}
+
+// LoadMultiConfig loads the multi-connector configuration from a file.
+func LoadMultiConfig(path string) (*MultiConnectorConfig, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read multi-config file: %v", err)
+	}
+
+	var cfg MultiConnectorConfig
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal multi-config: %v", err)
 	}
 
 	return &cfg, nil
