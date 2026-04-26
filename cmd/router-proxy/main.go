@@ -277,6 +277,25 @@ func main() {
 		slog.Info("🔑 WhatsApp OAuth verification enabled (EdDSA)")
 	}
 
+	// Initialize OpenAI validator
+	var oaValidator openai.APIKeyValidator
+	if cfg.OpenAI.Auth.Type != "" {
+		oaValidator, err = openai.CreateValidator(cfg.OpenAI.Auth.Type, cfg.OpenAI.Auth.Config)
+		if err != nil {
+			slog.Error("failed to create OpenAI validator from config", "error", err)
+			os.Exit(1)
+		}
+		slog.Info("OpenAI validator initialized from config", "type", cfg.OpenAI.Auth.Type)
+	} else if cfg.OpenAI.ApiKey != "" {
+		oaValidator, _ = openai.CreateValidator("single_key", map[string]interface{}{
+			"api_key": cfg.OpenAI.ApiKey,
+		})
+		slog.Info("OpenAI validator initialized from static api_key config")
+	} else {
+		oaValidator = &openai.AllowAllValidator{}
+		slog.Info("OpenAI validator set to AllowAll (no key configured)")
+	}
+
 	srv := &server{
 		registry:  router.NewRegistry(),
 		validator: auth.NewDualValidator(natsValidator, oauthValidator),
@@ -292,7 +311,7 @@ func main() {
 
 	// OpenAI Proxy integration
 	if issuerSeed != "" {
-		oaProxy := openai.NewProxy(cfg, []byte(issuerSeed))
+		oaProxy := openai.NewProxy(cfg, []byte(issuerSeed), oaValidator)
 		mux.HandleFunc("/v1/chat/completions", oaProxy.HandleChatCompletions)
 		mux.HandleFunc("/v1/models", oaProxy.HandleModels)
 		slog.Info("OpenAI-compatible proxy enabled")

@@ -98,4 +98,30 @@ Uses `jwt.DecodeGeneric(tokenStr)` to verify the Ed25519 signature and check the
 ## 4. Security Considerations
 - **ISSUER_SEED Protection:** The `ISSUER_SEED` allows full impersonation of any user for any app. It must be stored securely (e.g., Secret Manager) and never logged.
 - **Token Expiry:** Tokens are typically generated with a 1-hour TTL.
-- **OpenAI Endpoint:** The `/v1` endpoint is currently open (unauthenticated) but generates authenticated internal traffic. Access control should be handled at the Cloud Run/Ingress level if needed.
+- **OpenAI Endpoint Authentication:** The `/v1` endpoint requires an API key in the `Authorization: Bearer` header. It supports pluggable validation strategies via a handcrafted registry.
+
+#### OpenAI Strategy: single_key (Default)
+Validates against a single static key.
+- **Environment Fallback:** Uses `OPENAI_API_KEY` or `openai.api_key` in config.
+- **Config Example:**
+  ```yaml
+  openai:
+    auth:
+      type: "single_key"
+      config:
+        api_key: "sk-..."
+  ```
+
+#### OpenAI Strategy: multi_key
+Validates against multiple allowed API keys.
+- **Config Example:**
+  ```yaml
+  openai:
+    auth:
+      type: "multi_key"
+      config:
+        api_keys:
+          - "sk-key-1"
+          - "sk-key-2"
+  ```
+

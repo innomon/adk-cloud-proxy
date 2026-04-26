@@ -6,5 +6,18 @@ proxy:
   url: "http://localhost:8080" # This should be the address the connector uses to reach this instance.
 openai:
   api_key: "sk-adk-proxy-default-key"
+  # Example for multi-key auth:
+  # auth:
+  #   type: "multi_key"
+  #   config:
+  #     api_keys: ["sk-key-1", "sk-key-2"]
   default_app_id: "ollama"
   default_user_id: "openai-user"
+
+# Example for ADK multi-key auth:
+# auth:
+#   type: "multi_key"
+#   config:
+#     public_keys:
+#       - "UCxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+#       - "UCyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"

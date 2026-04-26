@@ -22,14 +22,16 @@ type Proxy struct {
 	cfg        *config.Config
 	issuerSeed []byte
 	client     *http.Client
+	validator  APIKeyValidator
 }
 
 // NewProxy creates a new OpenAI proxy.
-func NewProxy(cfg *config.Config, issuerSeed []byte) *Proxy {
+func NewProxy(cfg *config.Config, issuerSeed []byte, validator APIKeyValidator) *Proxy {
 	return &Proxy{
 		cfg:        cfg,
 		issuerSeed: issuerSeed,
 		client:     &http.Client{Timeout: 5 * time.Minute},
+		validator:  validator,
 	}
 }
 
@@ -432,15 +434,16 @@ func OpenAIChunkToADKEvent(chunk *ChatCompletionChunk) *ADKEvent {
 }
 
 func (p *Proxy) authenticate(r *http.Request) bool {
-	if p.cfg.OpenAI.ApiKey == "" {
-		return true // No key configured, allow all
+	if p.validator == nil {
+		return true
 	}
 
 	authHeader := r.Header.Get("Authorization")
 	if authHeader == "" {
-		return false
+		// Try to validate empty key if no header
+		return p.validator.Validate("")
 	}
 
 	token := strings.TrimPrefix(authHeader, "Bearer ")
-	return token == p.cfg.OpenAI.ApiKey
+	return p.validator.Validate(token)
 }
