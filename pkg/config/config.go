@@ -27,6 +27,7 @@ type ProxyConfig struct {
 
 // OpenAIConfig holds OpenAI-compatible proxy settings.
 type OpenAIConfig struct {
+	ApiKey        string `yaml:"api_key"`
 	DefaultAppID  string `yaml:"default_app_id"`
 	DefaultUserID string `yaml:"default_user_id"`
 }

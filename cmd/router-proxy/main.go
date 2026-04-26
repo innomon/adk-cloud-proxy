@@ -210,6 +210,9 @@ func main() {
 	if proxyURL := os.Getenv("PROXY_URL"); proxyURL != "" {
 		cfg.Proxy.URL = proxyURL
 	}
+	if oaKey := os.Getenv("OPENAI_API_KEY"); oaKey != "" {
+		cfg.OpenAI.ApiKey = oaKey
+	}
 
 	var ps pubsub.PubSub
 	if cfg.PubSub.Type != "" {

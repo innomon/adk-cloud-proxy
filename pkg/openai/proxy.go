@@ -40,6 +40,11 @@ func (p *Proxy) HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !p.authenticate(r) {
+		p.writeError(w, http.StatusUnauthorized, "invalid_api_key", "Incorrect API key provided")
+		return
+	}
+
 	if r.Method != http.MethodPost {
 		p.writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Only POST is allowed")
 		return
@@ -334,6 +339,11 @@ func (p *Proxy) HandleModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !p.authenticate(r) {
+		p.writeError(w, http.StatusUnauthorized, "invalid_api_key", "Incorrect API key provided")
+		return
+	}
+
 	response := map[string]any{
 		"object": "list",
 		"data": []map[string]any{
@@ -419,4 +429,18 @@ func OpenAIChunkToADKEvent(chunk *ChatCompletionChunk) *ADKEvent {
 			Parts: []ADKPart{{Text: text}},
 		},
 	}
+}
+
+func (p *Proxy) authenticate(r *http.Request) bool {
+	if p.cfg.OpenAI.ApiKey == "" {
+		return true // No key configured, allow all
+	}
+
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		return false
+	}
+
+	token := strings.TrimPrefix(authHeader, "Bearer ")
+	return token == p.cfg.OpenAI.ApiKey
 }
